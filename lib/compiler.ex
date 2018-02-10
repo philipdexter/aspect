@@ -24,9 +24,9 @@ defmodule Aspect.Compiler do
   def compile_forms(ast) do
     [{:attribute,1,:file,{"hi.as",1}},
      {:attribute,1,:module,:hi},
-     {:attribute,2,:compile,:export_all},
-     compile_forms(ast, []),
-     {:eof,7}]
+     {:attribute,2,:compile,:export_all}] ++
+      compile_forms(ast, []) ++
+      [{:eof,7}]
   end
   def compile_forms(['swap'|ast], [a,b|stack]) do
     compile_forms(ast, [b,a|stack])
@@ -38,11 +38,16 @@ defmodule Aspect.Compiler do
   def compile_forms([':',func_name|ast], stack) do
     {arg_count, ast_body} = parse_effect(ast)
     arg_vars = create_vars(arg_count)
-    {:function,5,:erlang.list_to_atom(func_name),arg_count,
-     [{:clause,5,
-       Enum.map(arg_vars, fn var -> {:var, 5, var} end),
-       [],
-       compile_forms(ast_body, arg_vars++stack)}]}
+    {body_r, ast_rest} = parse_body(ast_body, [])
+    body = Enum.reverse body_r
+
+    [{:function,5,:erlang.list_to_atom(func_name),arg_count,
+      [{:clause,5,
+        Enum.map(arg_vars, fn var -> {:var, 5, var} end),
+        [],
+        compile_forms(body, arg_vars)}]}
+     |
+     compile_forms(ast_rest, stack)]
   end
   def compile_forms(['drop'|ast], [_a|stack]) do
     compile_forms(ast, stack)
@@ -50,8 +55,29 @@ defmodule Aspect.Compiler do
   def compile_forms(['parse-token',token|ast], stack) do
     compile_forms(ast, [token|stack])
   end
-  def compile_forms([';'], []) do
-    []
+  def compile_forms([x|ast], stack) do
+    num = try do
+            :erlang.list_to_integer(x)
+          rescue
+            ArgumentError -> :error
+          end
+    case num do
+      :error ->
+        [a,b,c|stack_rest] = stack
+        [{:call,9,{:atom,9,:erlang.list_to_atom(x)},
+          [{:integer,9,a},{:var,9,b},{:var,9,c}]}
+         |
+         compile_forms(ast, stack_rest)]
+      _ -> compile_forms(ast, [num|stack])
+    end
+  end
+  def compile_forms([], []), do: []
+
+  def parse_body([';'|ast], stack) do
+    {stack, ast}
+  end
+  def parse_body([token|ast], stack) do
+    parse_body(ast, [token|stack])
   end
 
   defp parse_effect(['('|ast]) do
