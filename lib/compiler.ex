@@ -55,6 +55,25 @@ defmodule Aspect.Compiler do
   def compile_forms(['parse-token',token|ast], stack) do
     compile_forms(ast, [token|stack])
   end
+  def compile_forms(['['|ast], [a,b|stack]) do
+    {quot_r, ast_rest} = parse_quotation(ast, [])
+    quot = Enum.reverse quot_r
+    arg_vars = create_vars(2)
+
+    [{:call, 12,
+      {:fun, 12, {:clauses,
+                  [{:clause, 12,
+                    Enum.map(arg_vars, fn var -> {:var, 12, var} end),
+                    [],
+                    compile_forms(quot, arg_vars)}]}},
+      [{:var, 12, a}, {:var, 12, b}]}
+     |
+     compile_forms(ast_rest, stack)]
+  end
+  def compile_forms(['call'|ast], stack) do
+    # todo
+    compile_forms(ast, stack)
+  end
   def compile_forms([x|ast], stack) do
     num = try do
             :erlang.list_to_integer(x)
@@ -78,6 +97,13 @@ defmodule Aspect.Compiler do
   end
   def parse_body([token|ast], stack) do
     parse_body(ast, [token|stack])
+  end
+
+  def parse_quotation([']'|ast], stack) do
+    {stack, ast}
+  end
+  def parse_quotation([token|ast], stack) do
+    parse_quotation(ast, [token|stack])
   end
 
   defp parse_effect(['('|ast]) do
