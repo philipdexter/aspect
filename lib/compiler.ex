@@ -47,6 +47,9 @@ defmodule Aspect.Compiler do
   def compile_forms(['drop'|ast], [_a|stack]) do
     compile_forms(ast, stack)
   end
+  def compile_forms(['parse-token',token|ast], stack) do
+    compile_forms(ast, [token|stack])
+  end
   def compile_forms([';'], []) do
     []
   end
