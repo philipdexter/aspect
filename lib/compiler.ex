@@ -55,10 +55,18 @@ defmodule Aspect.Compiler do
   def compile_forms(['parse-token',token|ast], stack) do
     compile_forms(ast, [token|stack])
   end
-  def compile_forms(['['|ast], [a,b|stack]) do
+  def compile_forms(['['|ast], stack) do
     {quot_r, ast_rest} = parse_quotation(ast, [])
     quot = Enum.reverse quot_r
-    arg_vars = create_vars(2)
+    compile_forms(ast_rest, [quot|stack])
+  end
+  def compile_forms(['call('|ast], [quot|stack]) do
+    # todo
+    {num_args, ast_rest} = parse_effect(ast)
+
+    arg_vars = create_vars(num_args)
+
+    {args_for_call, stack_rest} = Enum.split(stack, num_args)
 
     [{:call, 12,
       {:fun, 12, {:clauses,
@@ -66,13 +74,9 @@ defmodule Aspect.Compiler do
                     Enum.map(arg_vars, fn var -> {:var, 12, var} end),
                     [],
                     compile_forms(quot, arg_vars)}]}},
-      [{:var, 12, a}, {:var, 12, b}]}
+      Enum.map(args_for_call, fn var -> {:var, 12, var} end)}
      |
-     compile_forms(ast_rest, stack)]
-  end
-  def compile_forms(['call'|ast], stack) do
-    # todo
-    compile_forms(ast, stack)
+     compile_forms(ast_rest, stack_rest)]
   end
   def compile_forms([x|ast], stack) do
     num = try do
