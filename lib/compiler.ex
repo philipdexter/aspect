@@ -60,6 +60,17 @@ defmodule Aspect.Compiler do
     quot = Enum.reverse quot_r
     compile_forms(ast_rest, [quot|stack])
   end
+  def compile_forms(['.'|ast], [x|stack]) do
+    [{:call, 15,
+      {:remote, 15, {:atom, 15, :io}, {:atom, 15, :format}},
+      [{:string, 15, [126, 112, 126, 110]},
+       {:cons, 15, {:var, 15, x}, {:nil, 15}}]}
+     |
+     compile_forms(ast, stack)]
+  end
+
+  # TODO: returning from words
+
   def compile_forms(['call('|ast], [quot|stack]) do
     # todo
     {num_args, ast_rest} = parse_effect(ast)
