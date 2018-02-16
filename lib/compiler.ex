@@ -17,7 +17,7 @@ defmodule Aspect.Compiler do
     |> Stream.filter(fn {s,_} -> s != "" end)
     |> Stream.map(fn {s,_} -> s end)
     |> Enum.to_list
-    |> compile_forms
+    |> to_erlang_abstract_format
   end
 
   def load(forms) do
@@ -36,9 +36,7 @@ defmodule Aspect.Compiler do
     |> fn(x) -> {x, %Ctx{ctx | fresh: fresh + num}} end.()
   end
 
-  # todo these should all return contexts (and stacks) as well!!!
-
-  def compile_forms(ast) do
+  def to_erlang_abstract_format(ast) do
     f = fn(f, code, ast, stack, ctx) ->
       case compile_forms(ast, stack, ctx) do
         {code_, [], [], _} ->
