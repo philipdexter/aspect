@@ -10,8 +10,10 @@ defmodule Aspect.Compiler do
 
     file
     |> File.stream!
-    |> Stream.flat_map(&String.split(String.replace_trailing(&1, "\n", ""), " "))
     |> Stream.zip(Stream.iterate(1, &(&1+1)))
+    |> Stream.flat_map(fn {s, l} ->
+      Enum.map(String.split(String.replace_trailing(s, "\n", ""), " "), &{&1, l})
+    end)
     |> Stream.filter(fn {s,_} -> s != "" end)
     |> Stream.map(fn {s,_} -> s end)
     |> Enum.to_list
