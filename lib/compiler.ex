@@ -114,31 +114,37 @@ defmodule Aspect.Compiler do
 
     f = fn(f, code, ast, stack, ctx) ->
       case compile_forms(ast, stack, ctx) do
-        # TODO assuming call leaves 1 on stack
-        # but now 'okay' doesn't compile!
-        {code_, [], [_], ctx_} ->
-          {code++code_, ctx_}
+        {code_, [], ret_args, ctx_} ->
+          {code++code_, ctx_, ret_args}
         {code_, ast_, stack_, ctx_} ->
           f.(f, code++code_, ast_, stack_, ctx_)
       end
     end
-    {code, ctxxx} = f.(f, [], quot, arg_vars, ctxx)
+    {code, ctxxx, ret_args} = f.(f, [], quot, arg_vars, ctxx)
 
     # todo when calling, check if there are args left on stack
     # and then take them off and match them
     # (see how callprint doesn't compile)
     # todo can look at the effect of the function which we're calling
-    # for now let's assume it's always 1
-    {[{:match, 12,
-       {:var, 12, :A},
-       {:call, 12,
-        {:fun, 12, {:clauses,
-                    [{:clause, 12,
-                      Enum.map(arg_vars, fn var -> {:var, 12, var} end),
-                      [],
-                      code}]}},
-        Enum.map(args_for_call, fn var -> {:var, 12, var} end)}}],
-     ast_rest, [:A|stack_rest], ctxxx}
+    # for now let's assume it's either 0 or 1
+    call = {:call, 12,
+            {:fun, 12, {:clauses,
+                        [{:clause, 12,
+                          Enum.map(arg_vars, fn var -> {:var, 12, var} end),
+                          [],
+                          code}]}},
+            Enum.map(args_for_call, fn var -> {:var, 12, var} end)}
+
+    {[case ret_args do
+        [] ->
+          call
+        [_] ->
+          {:match, 12, {:var, 12, :A}, call}
+      end],
+     ast_rest, case ret_args do
+                 [] -> stack_rest
+                 [_] -> [:A|stack_rest]
+               end, ctxxx}
   end
   def compile_forms([x|ast], stack, ctx) do
     num = try do
@@ -148,6 +154,8 @@ defmodule Aspect.Compiler do
           end
     case num do
       :error ->
+        # TODO assuming takes 3 args and returns 0
+        # fix!!
         [a,b,c|stack_rest] = stack
         {[{:call,9,{:atom,9,:erlang.list_to_atom(x)},
            [{:integer,9,a},{:var,9,b},{:var,9,c}]}],
