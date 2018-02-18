@@ -1,3 +1,7 @@
+# TODO introduce lexer object to ... lex
+# TODO build abstractions
+# TODO allow erlang/elixir calls
+
 defmodule Aspect.Compiler do
 
   defmodule Ctx do
@@ -92,6 +96,16 @@ defmodule Aspect.Compiler do
   def compile_forms(["drop"|ast], [_a|stack], ctx) do
     {[], ast, stack, ctx}
   end
+  def compile_forms(["("|ast], stack, ctx) do
+    {eff, [_,func|ast_next]} = Enum.split_while(ast, fn (x) -> x != ")" end)
+    arg_count = Enum.count(eff, fn (x) -> x == "." end)
+    [m, f] = String.split(func, ":")
+    {args, stack_next} = Enum.split(stack, arg_count)
+    {[{:call, 15,
+       {:remote, 15, {:atom, 15, String.to_atom(m)}, {:atom, 15, String.to_atom(f)}},
+       Enum.map(args, fn var -> {:var, 5, var} end)}],
+     ast_next, stack_next, ctx}
+  end
   def compile_forms(["parse-token",token|ast], stack, ctx) do
     {[], ast, [token|stack], ctx}
   end
@@ -101,6 +115,7 @@ defmodule Aspect.Compiler do
     {[], ast_rest, [quot|stack], ctx}
   end
   def compile_forms(["."|ast], [x|stack], ctx) do
+    # TODO use build_mfa_call
     {[{:call, 15,
        {:remote, 15, {:atom, 15, :io}, {:atom, 15, :format}},
        [{:string, 15, [126, 112, 126, 110]},
@@ -164,6 +179,12 @@ defmodule Aspect.Compiler do
     end
   end
   def compile_forms([], [], _), do: []
+
+  def build_mfa_call(module, function, args) do
+    {:call, 15,
+     {:remote, 15, {:atom, 15, module}, {:atom, 15, function}},
+     args}
+  end
 
   def parse_body([";"|ast], stack) do
     {stack, ast}
