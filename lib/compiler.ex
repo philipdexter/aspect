@@ -10,17 +10,40 @@ defmodule Aspect.Compiler do
     defstruct fresh: 0
   end
 
+  defmodule AST do
+    @type t :: [word]
+    @type word :: String.t()
+  end
+
+  @type stack :: [atom]
+
+  @spec mfa_call(atom, atom, [tuple]) :: tuple
   defp mfa_call(module, function, args) do
     {:call, 1, {:remote, 1, {:atom, 1, module}, {:atom, 1, function}}, args}
+  end
+
+  defp local_call(function, args) do
+    {:call, 1, {:atom, 1, function}, args}
   end
 
   defp match(lhs, rhs) do
     {:match, 1, lhs, rhs}
   end
 
+  defp var(x) do
+    {:var, 1, x}
+  end
+
   def compile(file) do
     IO.puts("Compiling #{file}")
 
+    file
+    |> file_to_ast
+    |> to_eaf
+  end
+
+  @spec file_to_ast(String.t()) :: AST.t()
+  def file_to_ast(file) do
     file
     |> File.stream!()
     |> Stream.zip(Stream.iterate(1, &(&1 + 1)))
@@ -30,7 +53,6 @@ defmodule Aspect.Compiler do
     |> Stream.filter(fn {s, _} -> s != "" end)
     |> Stream.map(fn {s, _} -> s end)
     |> Enum.to_list()
-    |> to_erlang_abstract_format
   end
 
   def load(forms) do
@@ -51,7 +73,8 @@ defmodule Aspect.Compiler do
     |> (fn x -> {x, %Ctx{ctx | fresh: fresh + num}} end).()
   end
 
-  def to_erlang_abstract_format(ast) do
+  @spec to_eaf(AST.t()) :: [tuple()]
+  def to_eaf(ast) do
     f = fn f, code, ast, stack, ctx ->
       case compile_forms(ast, stack, ctx) do
         {code_, [], [], _} ->
@@ -71,6 +94,8 @@ defmodule Aspect.Compiler do
     ] ++ code ++ [{:eof, 7}]
   end
 
+  @spec compile_forms(AST.t(), stack, %Ctx{}) :: {[tuple()], AST.t(), stack, %Ctx{}}
+
   def compile_forms(["swap" | ast], [a, b | stack], ctx) do
     {[], ast, [b, a | stack], ctx}
   end
@@ -79,7 +104,7 @@ defmodule Aspect.Compiler do
     # TODO: this assumes + takes 2 arguments
     # and returns 1
     {[x], ctxx} = fresh(1, ctx)
-    {[match({:var, 6, x}, {:op, 6, :+, {:var, 6, a}, {:var, 6, b}})], ast, [x | stack], ctxx}
+    {[match(var(x), {:op, 6, :+, var(a), var(b)})], ast, [x | stack], ctxx}
   end
 
   def compile_forms([":", func_name | ast], stack, ctx) do
@@ -104,7 +129,7 @@ defmodule Aspect.Compiler do
     # on the stack
     {[
        {:function, 5, String.to_atom(func_name), arg_count,
-        [{:clause, 5, Enum.map(arg_vars, fn var -> {:var, 5, var} end), [], code}]}
+        [{:clause, 5, Enum.map(arg_vars, fn var -> var(var) end), [], code}]}
      ], ast_rest, stack, ctxxx}
   end
 
@@ -123,11 +148,10 @@ defmodule Aspect.Compiler do
   end
 
   def compile_forms(["." | ast], [x | stack], ctx) do
-    # TODO use mfa_call
     {[
        mfa_call(:io, :format, [
          {:string, 15, [126, 112, 126, 110]},
-         {:cons, 15, {:var, 15, x}, {nil, 15}}
+         {:cons, 15, var(x), {nil, 15}}
        ])
      ], ast, stack, ctx}
   end
@@ -155,10 +179,8 @@ defmodule Aspect.Compiler do
     # todo can look at the effect of the called quot
     # for now let's assume it returns either 0 or 1 val
     call =
-      {:call, 12,
-       {:fun, 12,
-        {:clauses, [{:clause, 12, Enum.map(arg_vars, fn var -> {:var, 12, var} end), [], code}]}},
-       Enum.map(args_for_call, fn var -> {:var, 12, var} end)}
+      {:call, 12, {:fun, 12, {:clauses, [{:clause, 12, Enum.map(arg_vars, &var/1), [], code}]}},
+       Enum.map(args_for_call, &var/1)}
 
     {code_, stack_} =
       case ret_args do
@@ -166,7 +188,7 @@ defmodule Aspect.Compiler do
           {call, stack_rest}
 
         [_] ->
-          {match({:var, 12, :A}, call), [:A | stack_rest]}
+          {match(var(:A), call), [:A | stack_rest]}
       end
 
     {[code_], ast_rest, stack_, ctxxx}
@@ -197,9 +219,7 @@ defmodule Aspect.Compiler do
             # TODO capture return variables!!!
             # TODO if return greater than 1 then extract tuple
             {[
-               {:call, 15,
-                {:remote, 15, {:atom, 15, String.to_atom(m)}, {:atom, 15, String.to_atom(f)}},
-                Enum.map(args, fn var -> {:var, 5, var} end)}
+               mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
              ], ast_next, stack_next, ctx}
 
           false ->
@@ -208,14 +228,13 @@ defmodule Aspect.Compiler do
             [a, b, c | stack_rest] = stack
 
             {[
-               {:call, 9, {:atom, 9, String.to_atom(x)},
-                [{:integer, 9, a}, {:var, 9, b}, {:var, 9, c}]}
+               local_call(String.to_atom(x), [{:integer, 9, a}, var(b), var(c)])
              ], ast, stack_rest, ctx}
         end
 
       _ ->
-        {[var], ctxx} = fresh(1, ctx)
-        {[match({:var, 6, var}, {:integer, 9, num})], ast, [var | stack], ctxx}
+        {[x], ctxx} = fresh(1, ctx)
+        {[match(var(x), {:integer, 9, num})], ast, [x | stack], ctxx}
     end
   end
 
@@ -269,6 +288,6 @@ defmodule Aspect.Compiler do
   end
 
   def compile_plus(ast, [a, b | stack]) do
-    {[{:op, 6, :+, {:var, 6, a}, {:var, 6, b}}], ast, stack}
+    {[{:op, 6, :+, var(a), var(b)}], ast, stack}
   end
 end
