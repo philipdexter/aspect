@@ -11,6 +11,15 @@ defmodule Aspect.Compiler do
     defstruct fresh: 0
   end
 
+  defp mfa_call(module, function, args) do
+    {:call, 1,
+     {:remote, 1, {:atom, 1, module}, {:atom, 1, function}},
+     args}
+  end
+  defp match(lhs, rhs) do
+    {:match, 1, lhs, rhs}
+  end
+
   def compile(file) do
 
     IO.puts "Compiling #{file}"
@@ -68,7 +77,7 @@ defmodule Aspect.Compiler do
     # TODO: this assumes + takes 2 arguments
     # and returns 1
     {[x], ctxx} = fresh(1, ctx)
-    {[{:match,6,{:var,6,x},{:op,6,:+,{:var,6,a},{:var,6,b}}}],
+    {[match({:var,6,x},{:op,6,:+,{:var,6,a},{:var,6,b}})],
      ast, [x|stack], ctxx}
   end
   def compile_forms([":",func_name|ast], stack, ctx) do
@@ -100,21 +109,6 @@ defmodule Aspect.Compiler do
   def compile_forms(["drop"|ast], [_a|stack], ctx) do
     {[], ast, stack, ctx}
   end
-  def compile_forms(["("|ast], stack, ctx) do
-    # TODO allow returning !!! maybe some sort of
-    # -> syntax
-    # TODO allow 2/1 call preperation!
-    # which means prepare (parse) a call which takes 2 arguments
-    # and returns 1
-    {eff, [_,func|ast_next]} = Enum.split_while(ast, fn (x) -> x != ")" end)
-    arg_count = Enum.count(eff, fn (x) -> x == "." end)
-    [m, f] = String.split(func, ":")
-    {args, stack_next} = Enum.split(stack, arg_count)
-    {[{:call, 15,
-       {:remote, 15, {:atom, 15, String.to_atom(m)}, {:atom, 15, String.to_atom(f)}},
-       Enum.map(args, fn var -> {:var, 5, var} end)}],
-     ast_next, stack_next, ctx}
-  end
   def compile_forms(["parse-token",token|ast], stack, ctx) do
     {[], ast, [token|stack], ctx}
   end
@@ -124,11 +118,10 @@ defmodule Aspect.Compiler do
     {[], ast_rest, [quot|stack], ctx}
   end
   def compile_forms(["."|ast], [x|stack], ctx) do
-    # TODO use build_mfa_call
-    {[{:call, 15,
-       {:remote, 15, {:atom, 15, :io}, {:atom, 15, :format}},
-       [{:string, 15, [126, 112, 126, 110]},
-        {:cons, 15, {:var, 15, x}, {:nil, 15}}]}],
+    # TODO use mfa_call
+    {[mfa_call(:io, :format,
+         [{:string, 15, [126, 112, 126, 110]},
+          {:cons, 15, {:var, 15, x}, {:nil, 15}}])],
      ast, stack, ctx}
   end
 
@@ -164,7 +157,7 @@ defmodule Aspect.Compiler do
                         [] ->
                           {call, stack_rest}
                         [_] ->
-                          {{:match, 12, {:var, 12, :A}, call}, [:A|stack_rest]}
+                          {match({:var, 12, :A}, call), [:A|stack_rest]}
                       end
 
     {[code_], ast_rest, stack_, ctxxx}
@@ -204,17 +197,11 @@ defmodule Aspect.Compiler do
         end
       _ ->
         {[var], ctxx} = fresh(1, ctx)
-        {[{:match, 6, {:var, 6, var}, {:integer, 9, num}}],
+        {[match({:var, 6, var}, {:integer, 9, num})],
          ast, [var|stack], ctxx}
     end
   end
   def compile_forms([], [], _), do: []
-
-  def build_mfa_call(module, function, args) do
-    {:call, 15,
-     {:remote, 15, {:atom, 15, module}, {:atom, 15, function}},
-     args}
-  end
 
   def parse_body([";"|ast], stack) do
     {stack, ast}
