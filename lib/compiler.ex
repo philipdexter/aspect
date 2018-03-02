@@ -3,6 +3,7 @@
 # TODO allow erlang/elixir calls
 # TODO distinguish from immediates and vars better
 #      (allow passing immediates from stack to erlang functions for example)
+# TODO save immedaites to variables?
 
 defmodule Aspect.Compiler do
 
@@ -36,6 +37,7 @@ defmodule Aspect.Compiler do
     load compile(file)
   end
 
+  defp fresh(0, ctx), do: {[], ctx}
   defp fresh(num, %Ctx{fresh: fresh} = ctx) do
     fresh..(fresh+num-1)
     |> Enum.map(fn(x) -> :erlang.list_to_atom('X' ++ :erlang.integer_to_list(x)) end)
@@ -201,7 +203,9 @@ defmodule Aspect.Compiler do
              ast, stack_rest, ctx}
         end
       _ ->
-        {[], ast, [num|stack], ctx}
+        {[var], ctxx} = fresh(1, ctx)
+        {[{:match, 6, {:var, 6, var}, {:integer, 9, num}}],
+         ast, [var|stack], ctxx}
     end
   end
   def compile_forms([], [], _), do: []
