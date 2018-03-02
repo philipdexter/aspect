@@ -1,6 +1,8 @@
 # TODO introduce lexer object to ... lex
 # TODO build abstractions
 # TODO allow erlang/elixir calls
+# TODO distinguish from immediates and vars better
+#      (allow passing immediates from stack to erlang functions for example)
 
 defmodule Aspect.Compiler do
 
@@ -97,6 +99,11 @@ defmodule Aspect.Compiler do
     {[], ast, stack, ctx}
   end
   def compile_forms(["("|ast], stack, ctx) do
+    # TODO allow returning !!! maybe some sort of
+    # -> syntax
+    # TODO allow 2/1 call preperation!
+    # which means prepare (parse) a call which takes 2 arguments
+    # and returns 1
     {eff, [_,func|ast_next]} = Enum.split_while(ast, fn (x) -> x != ")" end)
     arg_count = Enum.count(eff, fn (x) -> x == "." end)
     [m, f] = String.split(func, ":")
@@ -168,12 +175,31 @@ defmodule Aspect.Compiler do
           end
     case num do
       :error ->
-        # TODO assuming takes 3 args and returns 0
-        # fix!!
-        [a,b,c|stack_rest] = stack
-        {[{:call,9,{:atom,9,String.to_atom(x)},
-           [{:integer,9,a},{:var,9,b},{:var,9,c}]}],
-         ast, stack_rest, ctx}
+        # TODO better organize
+        case String.contains?(x, "/") do
+          true ->
+            # call setup
+            [arg_count, return_count] =
+              x
+              |> String.split("/")
+              |> Enum.map(&elem(Integer.parse(&1), 0))
+            [func|ast_next] = ast
+            [m, f] = String.split(func, ":")
+            {args, stack_next} = Enum.split(stack, arg_count)
+            # TODO capture return variables!!!
+            # TODO if return greater than 1 then extract tuple
+            {[{:call, 15,
+               {:remote, 15, {:atom, 15, String.to_atom(m)}, {:atom, 15, String.to_atom(f)}},
+               Enum.map(args, fn var -> {:var, 5, var} end)}],
+             ast_next, stack_next, ctx}
+          false ->
+            # TODO assuming takes 3 args and returns 0
+            # fix!!
+            [a,b,c|stack_rest] = stack
+            {[{:call,9,{:atom,9,String.to_atom(x)},
+               [{:integer,9,a},{:var,9,b},{:var,9,c}]}],
+             ast, stack_rest, ctx}
+        end
       _ ->
         {[], ast, [num|stack], ctx}
     end
