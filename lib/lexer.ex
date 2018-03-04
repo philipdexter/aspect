@@ -9,6 +9,9 @@ defmodule Aspect.Lexer do
     {%Lexer{lexer | words: ws}, w}
   end
 
+  @spec remaining_words(t()) :: Aspect.Compiler.AST.t()
+  def remaining_words(%Lexer{words: words}), do: words
+
   @spec from_file(String.t()) :: Lexer.t()
   def from_file(file) do
     words =
