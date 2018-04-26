@@ -10,6 +10,7 @@
 defmodule Aspect.Compiler do
   @builtins %{
     "+" => &Aspect.Compiler.Builtins.plus/3,
+    "-" => &Aspect.Compiler.Builtins.minus/3,
     "swap" => &Aspect.Compiler.Builtins.swap/3,
     ":" => &Aspect.Compiler.Builtins.colon/3
   }

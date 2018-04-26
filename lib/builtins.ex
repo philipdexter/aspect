@@ -3,7 +3,12 @@ defmodule Aspect.Compiler.Builtins do
 
   def plus(ast, [a, b | stack], ctx) do
     {[x], ctxx} = fresh(1, ctx)
-    {[match(var(x), {:op, 6, :+, var(a), var(b)})], ast, [x | stack], ctxx}
+    {[match(var(x), {:op, 6, :+, var(b), var(a)})], ast, [x | stack], ctxx}
+  end
+
+  def minus(ast, [a, b | stack], ctx) do
+    {[x], ctxx} = fresh(1, ctx)
+    {[match(var(x), {:op, 6, :-, var(b), var(a)})], ast, [x | stack], ctxx}
   end
 
   def swap(ast, [a, b | stack], ctx) do
