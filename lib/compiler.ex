@@ -208,7 +208,7 @@ defmodule Aspect.Compiler do
   end
 
   def compile_forms(["call(" | ast], [quot | stack], ctx) do
-    {num_args, _, ast_rest} = parse_effect(["("|ast])
+    {num_args, num_ret, ast_rest} = parse_effect(["("|ast])
 
     {arg_vars, ctxx} = fresh(num_args, ctx)
 
@@ -226,23 +226,38 @@ defmodule Aspect.Compiler do
 
     {code, ctxxx, ret_args} = f.(f, [], quot, arg_vars, ctxx)
 
+    full_code = case ret_args do
+                  [] -> code
+                  [v] -> code ++ [var(v)]
+                  s -> code ++ [tuple(Enum.map(s, &var/1))]
+                end
+
+    # assert the declared return stack effect is the same
+    # as the number of values left on the stack
+    ^num_ret = length(ret_args)
+
     # todo quots that return more than 1
     # todo can look at the effect of the called quot
     # for now let's assume it returns either 0 or 1 val
     call =
-      {:call, 12, {:fun, 12, {:clauses, [{:clause, 12, Enum.map(arg_vars, &var/1), [], code}]}},
+      {:call, 12, {:fun, 12, {:clauses, [{:clause, 12, Enum.map(arg_vars, &var/1), [], full_code}]}},
        Enum.map(args_for_call, &var/1)}
 
-    {code_, stack_} =
+    {code_, stack_, ctx_} =
       case ret_args do
         [] ->
-          {call, stack_rest}
+          {call, stack_rest, ctxxx}
 
         [_] ->
-          {match(var(:A), call), [:A | stack_rest]}
+          {[v], c} = fresh(1, ctxxx)
+          {match(var(v), call), [v | stack_rest], c}
+
+        _ ->
+          {vs, c} = fresh(length(ret_args), ctxxx)
+          {match(tuple(Enum.map(vs, &var/1)), call), vs ++ stack_rest, c}
       end
 
-    {[code_], ast_rest, stack_, ctxxx}
+    {[code_], ast_rest, stack_, ctx_}
   end
 
   def compile_forms([x | ast], stack, ctx) do

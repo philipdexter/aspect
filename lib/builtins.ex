@@ -40,7 +40,7 @@ defmodule Aspect.Compiler.Builtins do
     full_code = case stack_rest do
                   [] -> code
                   [v] -> code ++ [var(v)]
-                  s -> code ++ tuple(Enum.map(s, &var/1))
+                  s -> code ++ [tuple(Enum.map(s, &var/1))]
                 end
 
     # assert the declared return stack effect is the same
