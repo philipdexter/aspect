@@ -11,7 +11,7 @@ defmodule Aspect.Compiler.Builtins do
   end
 
   def colon([func_name | ast], stack, ctx) do
-    {arg_count, ast_body} = Aspect.Compiler.parse_effect(ast)
+    {arg_count, ret_count, ast_body} = Aspect.Compiler.parse_effect(ast)
     {arg_vars, ctxx} = fresh(arg_count, ctx)
     {body_r, ast_rest} = parse_body(ast_body, [])
     body = Enum.reverse(body_r)
@@ -38,11 +38,13 @@ defmodule Aspect.Compiler.Builtins do
                   s -> code ++ tuple(Enum.map(s, &var/1))
                 end
 
-    # todo ensure arg_count number of variables are left
-    # on the stack
+    # assert the declared return stack effect is the same
+    # as the number of values left on the stack
+    ^ret_count = length(stack_rest)
+
     {[
        {:function, 5, String.to_atom(func_name), arg_count,
-        [{:clause, 5, Enum.map(arg_vars, fn var -> var(var) end), [], full_code}]}
+        [{:clause, 5, Enum.map(arg_vars, &var/1), [], full_code}]}
      ], ast_rest, stack, ctxxx}
   end
 end

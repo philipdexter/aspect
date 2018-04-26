@@ -207,7 +207,7 @@ defmodule Aspect.Compiler do
   end
 
   def compile_forms(["call(" | ast], [quot | stack], ctx) do
-    {num_args, ast_rest} = parse_effect(ast)
+    {num_args, _, ast_rest} = parse_effect(["("|ast])
 
     {arg_vars, ctxx} = fresh(num_args, ctx)
 
@@ -266,19 +266,9 @@ defmodule Aspect.Compiler do
     parse_quotation(ast, [token | stack])
   end
 
-  def parse_effect(["(" | ast]) do
-    parse_effect(ast)
-  end
-
-  def parse_effect([")" | ast]), do: {0, ast}
-
-  def parse_effect(["--" | ast]) do
-    {_, next} = parse_effect(ast)
-    {0, next}
-  end
-
-  def parse_effect([_ | ast]) do
-    {count, next} = parse_effect(ast)
-    {count + 1, next}
+  def parse_effect(ast) do
+    {["("|front], ["--"|rest]} = Enum.split_while(ast, fn x -> x != "--" end)
+    {back, [")"|next]} = Enum.split_while(rest, fn x -> x != ")" end)
+    {length(front), length(back), next}
   end
 end
