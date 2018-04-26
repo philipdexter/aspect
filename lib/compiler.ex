@@ -9,7 +9,9 @@
 
 defmodule Aspect.Compiler do
   @builtins %{
-    "+" => &Aspect.Compiler.Builtins.plus/3
+    "+" => &Aspect.Compiler.Builtins.plus/3,
+    "swap" => &Aspect.Compiler.Builtins.swap/3,
+    ":" => &Aspect.Compiler.Builtins.colon/3
   }
 
   defmodule Ctx do
@@ -130,7 +132,6 @@ defmodule Aspect.Compiler do
                     {[
                        mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
                      ], ast_next, stack_next, ctx}
-
                   1 ->
                     {[x], ctxx} = fresh(1, ctx)
 
@@ -140,7 +141,6 @@ defmodule Aspect.Compiler do
                          mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
                        )
                      ], ast_next, [x | stack_next], ctxx}
-
                   _ ->
                     {xs, ctxx} = fresh(return_count, ctx)
 
@@ -155,6 +155,8 @@ defmodule Aspect.Compiler do
               false ->
                 # TODO assuming takes 3 args and returns 0
                 # fix!!
+                # need to somehow store the effect while parsing,
+                # store it in ctx?
                 [a, b, c | stack_rest] = stack
 
                 {[
@@ -180,41 +182,6 @@ defmodule Aspect.Compiler do
   # want minimum needed builtin stuff
 
   @spec compile_forms(AST.t(), stack, %Ctx{}) :: {[tuple()], AST.t(), stack, %Ctx{}}
-
-  def compile_forms(["swap" | ast], [a, b | stack], ctx) do
-    {[], ast, [b, a | stack], ctx}
-  end
-
-  def compile_forms(["+" | ast], [a, b | stack], ctx) do
-    {[x], ctxx} = fresh(1, ctx)
-    {[match(var(x), {:op, 6, :+, var(a), var(b)})], ast, [x | stack], ctxx}
-  end
-
-  def compile_forms([":", func_name | ast], stack, ctx) do
-    {arg_count, ast_body} = parse_effect(ast)
-    {arg_vars, ctxx} = fresh(arg_count, ctx)
-    {body_r, ast_rest} = parse_body(ast_body, [])
-    body = Enum.reverse(body_r)
-
-    f = fn f, code, ast, stack, ctx ->
-      case compile_forms(ast, stack, ctx) do
-        {code_, [], [], ctx_} ->
-          {code ++ code_, ctx_}
-
-        {code_, ast_, stack_, ctx_} ->
-          f.(f, code ++ code_, ast_, stack_, ctx_)
-      end
-    end
-
-    {code, ctxxx} = f.(f, [], body, arg_vars, ctxx)
-
-    # todo ensure arg_count number of variables are left
-    # on the stack
-    {[
-       {:function, 5, String.to_atom(func_name), arg_count,
-        [{:clause, 5, Enum.map(arg_vars, fn var -> var(var) end), [], code}]}
-     ], ast_rest, stack, ctxxx}
-  end
 
   def compile_forms(["drop" | ast], [_a | stack], ctx) do
     {[], ast, stack, ctx}
@@ -299,18 +266,18 @@ defmodule Aspect.Compiler do
     parse_quotation(ast, [token | stack])
   end
 
-  defp parse_effect(["(" | ast]) do
+  def parse_effect(["(" | ast]) do
     parse_effect(ast)
   end
 
-  defp parse_effect([")" | ast]), do: {0, ast}
+  def parse_effect([")" | ast]), do: {0, ast}
 
-  defp parse_effect(["--" | ast]) do
+  def parse_effect(["--" | ast]) do
     {_, next} = parse_effect(ast)
     {0, next}
   end
 
-  defp parse_effect([_ | ast]) do
+  def parse_effect([_ | ast]) do
     {count, next} = parse_effect(ast)
     {count + 1, next}
   end
