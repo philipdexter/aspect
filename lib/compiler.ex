@@ -16,7 +16,7 @@ defmodule Aspect.Compiler do
   }
 
   defmodule Ctx do
-    defstruct fresh: 0
+    defstruct fresh: 0, words: %{}
   end
 
   defmodule AST do
@@ -66,11 +66,14 @@ defmodule Aspect.Compiler do
   end
 
   def fresh(0, ctx), do: {[], ctx}
-
   def fresh(num, %Ctx{fresh: fresh} = ctx) do
     fresh..(fresh + num - 1)
     |> Enum.map(fn x -> :erlang.list_to_atom('X' ++ :erlang.integer_to_list(x)) end)
     |> (fn x -> {x, %Ctx{ctx | fresh: fresh + num}} end).()
+  end
+
+  def define_with_effect(function_name, num_args, num_ret, %Ctx{words: words} = ctx) do
+    %Ctx{ctx | words: Map.put(words, function_name, {num_args, num_ret})}
   end
 
   @spec to_eaf(Aspect.Lexer.t()) :: [tuple()]
@@ -154,15 +157,27 @@ defmodule Aspect.Compiler do
                 end
 
               false ->
-                # TODO assuming takes 3 args and returns 0
-                # fix!!
-                # need to somehow store the effect while parsing,
-                # store it in ctx?
-                [a, b, c | stack_rest] = stack
+                case Map.get(ctx.words, word) do
+                  nil ->
+                    throw {:undefined_function, word}
+                  {arg_count, ret_count} ->
+                    {args, stack_rest} = Enum.split(stack, arg_count)
+                    # TODO assert that args has a length of arg_count!!!
 
-                {[
-                   local_call(String.to_atom(word), [{:integer, 9, a}, var(b), var(c)])
-                 ], ast, stack_rest, ctx}
+                    call = local_call(String.to_atom(word), Enum.map(args, &var/1))
+
+                    {code, ctx_} = case ret_count do
+                                     0 -> {call, ctx}
+                                     1 ->
+                                       {[x], ctxx} = fresh(1, ctx)
+                                       {match(var(x), call), ctxx}
+                                     _ ->
+                                       {xs, ctxx} = fresh(ret_count, ctx)
+                                       {match(tuple(Enum.map(xs, &var/1)), call), ctxx}
+                                   end
+
+                    {[code], ast, stack_rest, ctx_}
+                end
             end
 
           _ ->

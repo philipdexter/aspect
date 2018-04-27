@@ -47,9 +47,11 @@ defmodule Aspect.Compiler.Builtins do
     # as the number of values left on the stack
     ^ret_count = length(stack_rest)
 
+    ctxxxx = define_with_effect(func_name, arg_count, ret_count, ctxxx)
+
     {[
        {:function, 5, String.to_atom(func_name), arg_count,
         [{:clause, 5, Enum.map(arg_vars, &var/1), [], full_code}]}
-     ], ast_rest, stack, ctxxx}
+     ], ast_rest, stack, ctxxxx}
   end
 end
