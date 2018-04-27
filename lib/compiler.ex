@@ -161,22 +161,22 @@ defmodule Aspect.Compiler do
                   nil ->
                     throw {:undefined_function, word}
                   {arg_count, ret_count} ->
-                    {args, stack_rest} = Enum.split(stack, arg_count)
+                    {args, stack_next} = Enum.split(stack, arg_count)
                     ^arg_count = length(args)
 
                     call = local_call(String.to_atom(word), Enum.map(args, &var/1))
 
-                    {code, ctx_} = case ret_count do
-                                     0 -> {call, ctx}
+                    {code, stack_, ctx_} = case ret_count do
+                                     0 -> {call, stack_next, ctx}
                                      1 ->
                                        {[x], ctxx} = fresh(1, ctx)
-                                       {match(var(x), call), ctxx}
+                                       {match(var(x), call), [x|stack_next], ctxx}
                                      _ ->
                                        {xs, ctxx} = fresh(ret_count, ctx)
-                                       {match(tuple(Enum.map(xs, &var/1)), call), ctxx}
+                                       {match(tuple(Enum.map(xs, &var/1)), call), Enum.reverse(xs) ++ stack_next, ctxx}
                                    end
 
-                    {[code], ast, stack_rest, ctx_}
+                    {[code], ast, stack_, ctx_}
                 end
             end
 
