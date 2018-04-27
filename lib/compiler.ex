@@ -279,7 +279,7 @@ defmodule Aspect.Compiler do
     compile_word(x, ast, stack, ctx)
   end
 
-  def compile_forms([], [], _), do: []
+  def compile_forms([], [], ctx), do: {[], [], [], ctx}
 
   def parse_body([";" | ast], stack) do
     {stack, ast}
