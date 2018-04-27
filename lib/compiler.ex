@@ -47,6 +47,14 @@ defmodule Aspect.Compiler do
     {:tuple, 1, elems}
   end
 
+  def compile_string(string) do
+    IO.puts("Compiling string")
+
+    string
+    |> Aspect.Lexer.from_string()
+    |> to_eaf
+  end
+
   def compile(file) do
     IO.puts("Compiling #{file}")
 

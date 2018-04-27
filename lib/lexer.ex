@@ -29,5 +29,24 @@ defmodule Aspect.Lexer do
     %Lexer{words: words}
   end
 
+  @spec from_string(String.t()) :: Lexer.t()
+  def from_string(string) do
+    {:ok, s} = StringIO.open(string)
+
+    words =
+      s
+      |> IO.binstream(:line)
+      |> Stream.zip(Stream.iterate(1, &(&1 + 1)))
+      |> Stream.flat_map(fn {s, l} ->
+        Enum.map(String.split(String.replace_trailing(s, "\n", ""), " "), &{&1, l})
+      end)
+      |> Stream.filter(fn {s, _} -> s != "" end)
+      |> Stream.map(fn {s, _} -> s end)
+      |> Enum.to_list()
+      |> expand_macros
+
+    %Lexer{words: words}
+  end
+
   defp expand_macros(x), do: x
 end
