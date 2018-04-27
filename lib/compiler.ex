@@ -129,7 +129,7 @@ defmodule Aspect.Compiler do
                 # distinguish beween elixir, erlang, and aspect calls
                 [m, f] = String.split(func, ":")
                 {args, stack_next} = Enum.split(stack, arg_count)
-                # TODO assert that args has length of arg_count!!!
+                ^arg_count = length(args)
 
                 case return_count do
                   0 ->
@@ -162,7 +162,7 @@ defmodule Aspect.Compiler do
                     throw {:undefined_function, word}
                   {arg_count, ret_count} ->
                     {args, stack_rest} = Enum.split(stack, arg_count)
-                    # TODO assert that args has a length of arg_count!!!
+                    ^arg_count = length(args)
 
                     call = local_call(String.to_atom(word), Enum.map(args, &var/1))
 
