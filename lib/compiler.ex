@@ -153,7 +153,7 @@ defmodule Aspect.Compiler do
                          tuple(Enum.map(xs, &var/1)),
                          mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
                        )
-                     ], ast_next, Enum.reverse(xs) ++ stack_next, ctxx}
+                     ], ast_next, xs ++ stack_next, ctxx}
                 end
 
               false ->
@@ -173,7 +173,7 @@ defmodule Aspect.Compiler do
                                        {match(var(x), call), [x|stack_next], ctxx}
                                      _ ->
                                        {xs, ctxx} = fresh(ret_count, ctx)
-                                       {match(tuple(Enum.map(xs, &var/1)), call), Enum.reverse(xs) ++ stack_next, ctxx}
+                                       {match(tuple(Enum.map(xs, &var/1)), call), xs ++ stack_next, ctxx}
                                    end
 
                     {[code], ast, stack_, ctx_}
