@@ -4,13 +4,16 @@ defmodule AspectTest do
 
   import Aspect.Compiler
 
+  setup do
+    on_exit fn ->
+      :code.purge(:hi)
+      :code.delete(:hi)
+    end
+  end
+
   test "can compile and load an empty module and then unload it" do
     {:module, :hi} = load(compile_string(""))
     assert {:file, 'hi.as'} == :code.is_loaded(:hi)
-
-    :code.purge(:hi)
-    :code.delete(:hi)
-    assert false == :code.is_loaded(:hi)
   end
 
   test "can perform arithmetic" do
