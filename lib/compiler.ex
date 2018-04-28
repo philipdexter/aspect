@@ -87,12 +87,15 @@ defmodule Aspect.Compiler do
 
   @spec to_eaf(Aspect.Lexer.t()) :: [tuple()]
   def to_eaf(lexer) do
-    ast = Aspect.Lexer.remaining_words(lexer)
+    Aspect.Lexer.remaining_words(lexer)
+    |> ast_to_eaf_module()
+  end
 
+  def ast_to_eaf_module(ast) do
     f = fn f, code, ast, stack, ctx ->
       case compile_forms(ast, stack, ctx) do
-        {code_, [], [], _} ->
-          {code ++ code_, ctx}
+        {code_, [], [], ctx_} ->
+          {code ++ code_, ctx_}
 
         {code_, ast_, stack_, ctx_} ->
           f.(f, code ++ code_, ast_, stack_, ctx_)
@@ -107,6 +110,54 @@ defmodule Aspect.Compiler do
       {:attribute, 2, :compile, :export_all}
     ] ++ code ++ [{:eof, 7}]
   end
+
+  def eval_string(string) do
+    IO.puts("Compiling string")
+
+    code =
+      string
+      |> Aspect.Lexer.from_string()
+      |> to_eaf_words
+
+    load(code)
+
+    # TODO need to uncomment this eventaully, when the feature is supported
+    #:_eval_expr._eval_expr()
+
+    :code.purge(:_eval_expr)
+    :code.delete(:_eval_expr)
+  end
+
+  def to_eaf_words(lexer) do
+    Aspect.Lexer.remaining_words(lexer)
+    |> ast_to_eaf_words()
+  end
+
+  def ast_to_eaf_words(ast) do
+    f = fn f, code, ast, stack, ctx ->
+      case compile_forms(ast, stack, ctx) do
+        {code_, [], stack_, ctx_} ->
+          {code ++ code_, stack_, ctx_}
+
+        {code_, ast_, stack_, ctx_} ->
+          f.(f, code ++ code_, ast_, stack_, ctx_)
+      end
+    end
+
+    {code, stack, ctx} = f.(f, [], ast, [], %Ctx{})
+
+    # TODO need way to infer stack effects
+
+    {stack_func, [], [], _} = Aspect.Compiler.Builtins.colon(["_eval_expr", "(", "--", ")" | (Enum.reverse(stack) ++ [";"])], [], ctx)
+
+    [
+      {:attribute, 1, :file, {'hi.as', 1}},
+      {:attribute, 1, :module, :_eval_expr},
+      {:attribute, 2, :compile, :export_all}
+    ] ++ code ++ stack_func ++ [{:eof, 7}]
+  end
+
+  # TODO case
 
   def compile_word(word, ast, stack, ctx) do
     case builtin(word) do
@@ -293,6 +344,8 @@ defmodule Aspect.Compiler do
   end
 
   def compile_forms([], [], ctx), do: {[], [], [], ctx}
+
+  # by default we should parse stuff by putting it on the stack
 
   def parse_body([";" | ast], stack) do
     {stack, ast}
