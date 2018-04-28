@@ -15,6 +15,10 @@ defmodule Aspect.Compiler.Builtins do
     {[], ast, [b, a | stack], ctx}
   end
 
+  def dup(ast, [a | stack], ctx) do
+    {[], ast, [a, a | stack], ctx}
+  end
+
   def colon([func_name | ast], stack, ctx) do
     {arg_count, ret_count, ast_body} = Aspect.Compiler.parse_effect(ast)
     {arg_vars, ctxx} = fresh(arg_count, ctx)

@@ -58,4 +58,11 @@ defmodule AspectTest do
     assert :test.it == 1
   end
 
+  test "dup" do
+    load(compile_string("""
+    : d ( -- x x ) 1 dup ;
+    """))
+    assert {1, 1} == :scratchpad.d()
+  end
+
 end

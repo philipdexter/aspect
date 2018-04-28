@@ -12,6 +12,7 @@ defmodule Aspect.Compiler do
     "+" => &Aspect.Compiler.Builtins.plus/3,
     "-" => &Aspect.Compiler.Builtins.minus/3,
     "swap" => &Aspect.Compiler.Builtins.swap/3,
+    "dup" => &Aspect.Compiler.Builtins.dup/3,
     ":" => &Aspect.Compiler.Builtins.colon/3
   }
 
