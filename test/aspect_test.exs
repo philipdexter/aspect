@@ -45,8 +45,30 @@ defmodule AspectTest do
   test "ordering of aspect stack to elixir tuples" do
     load(compile_string("""
     : give2 ( -- x x ) 1 2 ;
+    : drop1 ( x y -- x ) drop ;
     """))
     assert {2, 1} == :scratchpad.give2()
+    assert 1 == :scratchpad.drop1(2, 1)
+  end
+
+  test "empty function" do
+    load(compile_string("""
+    : blank ( -- ) ;
+    """))
+    assert :ok == :scratchpad.blank()
+  end
+
+  test "carry-through functions" do
+    load(compile_string("""
+    : carry ( x -- x ) ;
+    : carry ( x y -- x y ) ;
+    : carry ( x y z -- x y z ) ;
+    : withcarry3 ( -- x ) 1 2 3 - - ;
+    """))
+    assert 1 == :scratchpad.carry(1)
+    assert {1, 2} == :scratchpad.carry(1, 2)
+    assert {1, 2, 3} == :scratchpad.carry(1, 2, 3)
+    assert 2 == :scratchpad.withcarry3()
   end
 
   test "can set the module name" do

@@ -16,6 +16,13 @@ defmodule Aspect.Compiler do
     ":" => &Aspect.Compiler.Builtins.colon/3
   }
 
+  @parsing_words %{
+    ":" => &Aspect.Compiler.Builtins.colon/3,
+    "M:" => &Aspect.Compiler.Builtins.set_module/3
+  }
+
+  # TODO test empty function definition
+
   defmodule Ctx do
     defstruct fresh: 0, words: %{}, module_name: "scratchpad"
   end
@@ -92,17 +99,23 @@ defmodule Aspect.Compiler do
   end
 
   def ast_to_eaf_module(ast) do
-    f = fn f, code, ast, stack, ctx ->
-      case compile_forms(ast, stack, ctx) do
-        {code_, [], [], ctx_} ->
-          {code ++ code_, ctx_}
+    # f = fn f, code, ast, stack, ctx ->
+    #   # the idea is not to call compile_forms here
+    #   # we just want to lex it and put stuff on the stack
+    #   # UNLESS we come across a parsing word,
+    #   # at that point we should evaluate it
+    #   case compile_forms(ast, stack, ctx) do
+    #     {code_, [], [], ctx_} ->
+    #       {code ++ code_, ctx_}
 
-        {code_, ast_, stack_, ctx_} ->
-          f.(f, code ++ code_, ast_, stack_, ctx_)
-      end
-    end
+    #     {code_, ast_, stack_, ctx_} ->
+    #       f.(f, code ++ code_, ast_, stack_, ctx_)
+    #   end
+    # end
 
-    {code, ctx} = f.(f, [], ast, [], %Ctx{})
+    # {code, ctx} = f.(f, [], ast, [], %Ctx{})
+
+    {code, [], ctx} = parse_words(ast, [], %Ctx{})
 
     [
       {:attribute, 1, :file, {'hi.as', 1}},
@@ -251,17 +264,33 @@ defmodule Aspect.Compiler do
     Map.fetch(@builtins, word)
   end
 
-  # TODO build 'built-in' compile steps and
-  # call them from compile_forms
-  # or .. somehow define them as functions...?
-  # which are callable?
-  # want minimum needed builtin stuff
+  def parsing_word(word) do
+    Map.fetch(@parsing_words, word)
+  end
+
+  def parse_words(ast, stack, ctx) do
+    f = fn f, code, ast, stack, ctx ->
+          case parse_word(ast, stack, ctx) do
+            {code_, [], stack_, ctx_} ->
+              {code ++ code_, stack_, ctx_}
+            {code_, ast_, stack_, ctx_} ->
+              f.(f, code ++ code_, ast_, stack_, ctx_)
+          end
+    end
+
+    f.(f, [], ast, stack, ctx)
+  end
+
+  def parse_word([word | ast], stack, ctx) do
+    case parsing_word(word) do
+        # TODO handle numbers properly here maybe
+      :error -> {[], ast, [word | stack], ctx}
+      {:ok, f} -> f.(ast, stack, ctx)
+    end
+  end
+  def parse_word([], [], ctx), do: {[], [], [], ctx}
 
   @spec compile_forms(AST.t(), stack, %Ctx{}) :: {[tuple()], AST.t(), stack, %Ctx{}}
-
-  def compile_forms(["M:", mod_name | ast], stack, ctx) do
-    {[], ast, stack, %Ctx{ctx | module_name: mod_name}}
-  end
 
   def compile_forms(["drop" | ast], [_a | stack], ctx) do
     {[], ast, stack, ctx}

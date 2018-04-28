@@ -19,6 +19,10 @@ defmodule Aspect.Compiler.Builtins do
     {[], ast, [a, a | stack], ctx}
   end
 
+  def set_module([mod_name | ast], stack, ctx) do
+    {[], ast, stack, %Aspect.Compiler.Ctx{ctx | module_name: mod_name}}
+  end
+
   def colon([func_name | ast], stack, ctx) do
     {arg_count, ret_count, ast_body} = Aspect.Compiler.parse_effect(ast)
     {arg_vars, ctxx} = fresh(arg_count, ctx)
@@ -45,6 +49,11 @@ defmodule Aspect.Compiler.Builtins do
                   [] -> code
                   [v] -> code ++ [var(v)]
                   s -> code ++ [tuple(Enum.map(s, &var/1))]
+                end
+
+    full_code = case full_code do
+                  [] -> [{:atom, 1, :ok}]
+                  _ -> full_code
                 end
 
     # assert the declared return stack effect is the same
