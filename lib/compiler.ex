@@ -16,7 +16,7 @@ defmodule Aspect.Compiler do
   }
 
   defmodule Ctx do
-    defstruct fresh: 0, words: %{}
+    defstruct fresh: 0, words: %{}, module_name: "scratchpad"
   end
 
   defmodule AST do
@@ -91,18 +91,18 @@ defmodule Aspect.Compiler do
     f = fn f, code, ast, stack, ctx ->
       case compile_forms(ast, stack, ctx) do
         {code_, [], [], _} ->
-          code ++ code_
+          {code ++ code_, ctx}
 
         {code_, ast_, stack_, ctx_} ->
           f.(f, code ++ code_, ast_, stack_, ctx_)
       end
     end
 
-    code = f.(f, [], ast, [], %Ctx{})
+    {code, ctx} = f.(f, [], ast, [], %Ctx{})
 
     [
-      {:attribute, 1, :file, {"hi.as", 1}},
-      {:attribute, 1, :module, :hi},
+      {:attribute, 1, :file, {'hi.as', 1}},
+      {:attribute, 1, :module, String.to_atom(ctx.module_name)},
       {:attribute, 2, :compile, :export_all}
     ] ++ code ++ [{:eof, 7}]
   end
@@ -206,6 +206,10 @@ defmodule Aspect.Compiler do
   # want minimum needed builtin stuff
 
   @spec compile_forms(AST.t(), stack, %Ctx{}) :: {[tuple()], AST.t(), stack, %Ctx{}}
+
+  def compile_forms(["M:", mod_name | ast], stack, ctx) do
+    {[], ast, stack, %Ctx{ctx | module_name: mod_name}}
+  end
 
   def compile_forms(["drop" | ast], [_a | stack], ctx) do
     {[], ast, stack, ctx}
