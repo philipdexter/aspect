@@ -42,6 +42,13 @@ defmodule AspectTest do
     assert :scratchpad.add2(2) == 4
   end
 
+  test "ordering of aspect stack to elixir tuples" do
+    load(compile_string("""
+    : give2 ( -- x x ) 1 2 ;
+    """))
+    assert {2, 1} == :scratchpad.give2()
+  end
+
   test "can set the module name" do
     load(compile_string("""
     M: test
