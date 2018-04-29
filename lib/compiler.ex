@@ -100,22 +100,6 @@ defmodule Aspect.Compiler do
   end
 
   def ast_to_eaf_module(ast) do
-    # f = fn f, code, ast, stack, ctx ->
-    #   # the idea is not to call compile_forms here
-    #   # we just want to lex it and put stuff on the stack
-    #   # UNLESS we come across a parsing word,
-    #   # at that point we should evaluate it
-    #   case compile_forms(ast, stack, ctx) do
-    #     {code_, [], [], ctx_} ->
-    #       {code ++ code_, ctx_}
-
-    #     {code_, ast_, stack_, ctx_} ->
-    #       f.(f, code ++ code_, ast_, stack_, ctx_)
-    #   end
-    # end
-
-    # {code, ctx} = f.(f, [], ast, [], %Ctx{})
-
     {code, [], ctx} = parse_words(ast, [], %Ctx{})
 
     [
@@ -135,11 +119,13 @@ defmodule Aspect.Compiler do
 
     load(code)
 
-    # TODO need to uncomment this eventaully, when the feature is supported
-    # :_eval_expr._eval_expr()
+    # use apply to avoid the 'module is not available' warning
+    apply(:_eval_expr, :_eval_expr, [])
 
     :code.purge(:_eval_expr)
     :code.delete(:_eval_expr)
+
+    :ok
   end
 
   def to_eaf_words(lexer) do
@@ -148,17 +134,7 @@ defmodule Aspect.Compiler do
   end
 
   def ast_to_eaf_words(ast) do
-    f = fn f, code, ast, stack, ctx ->
-      case compile_forms(ast, stack, ctx) do
-        {code_, [], stack_, ctx_} ->
-          {code ++ code_, stack_, ctx_}
-
-        {code_, ast_, stack_, ctx_} ->
-          f.(f, code ++ code_, ast_, stack_, ctx_)
-      end
-    end
-
-    {code, stack, ctx} = f.(f, [], ast, [], %Ctx{})
+    {code, stack, ctx} = parse_words(ast, [], %Ctx{})
 
     # TODO need way to infer stack effects
 

@@ -1,6 +1,8 @@
 defmodule AspectTest do
   use ExUnit.Case
+  import ExUnit.CaptureIO
   doctest Aspect
+
 
   import Aspect.Compiler
 
@@ -87,4 +89,10 @@ defmodule AspectTest do
     assert {1, 1} == :scratchpad.d()
   end
 
+  test "eval string" do
+    f = fn ->
+      eval_string(": h ( -- 1 ) 1 ; h 2 + .")
+    end
+    assert "Compiling string\n3\n" == capture_io(f)
+  end
 end
