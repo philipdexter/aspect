@@ -168,87 +168,90 @@ defmodule Aspect.Compiler do
             ArgumentError -> :error
           end
 
-        case num do
-          :error ->
-            # TODO better organize
-            case String.starts_with?(word, ":") do
-              true ->
+        type =
+          case num do
+            :error -> case String.starts_with?(word, ":") do
+                        true -> :atom
+                        false -> case String.contains?(word, "/") do
+                                   true -> :call_setup
+                                   false -> :func_call
+                                 end
+                      end
+            _ -> :number
+          end
+
+        case type do
+          :atom ->
                 {[x], ctxx} = fresh(1, ctx)
                 {[match(var(x), {:atom, 1, String.to_atom(String.slice(word, 1..-1))})], ast, [x | stack], ctxx}
-              false ->
-                case String.contains?(word, "/") do
-                  true ->
-                    # call setup
-                    [arg_count, return_count] =
-                      word
-                      |> String.split("/")
-                      |> Enum.map(&elem(Integer.parse(&1), 0))
+          :call_setup ->
+            # call setup
+            [arg_count, return_count] =
+              word
+              |> String.split("/")
+              |> Enum.map(&elem(Integer.parse(&1), 0))
 
-                    [func | ast_next] = ast
-                    # TODO maybe borrow from elixir, use dot and somehow
-                    # distinguish beween elixir, erlang, and aspect calls
-                    [m, f] = String.split(func, ":")
-                    {args, stack_next} = Enum.split(stack, arg_count)
-                    ^arg_count = length(args)
+            [func | ast_next] = ast
+            # TODO maybe borrow from elixir, use dot and somehow
+            # distinguish beween elixir, erlang, and aspect calls
+            [m, f] = String.split(func, ":")
+            {args, stack_next} = Enum.split(stack, arg_count)
+            ^arg_count = length(args)
 
-                    case return_count do
-                      0 ->
-                        {[
-                          mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
-                        ], ast_next, stack_next, ctx}
+            case return_count do
+              0 ->
+                {[
+                  mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
+                ], ast_next, stack_next, ctx}
 
-                      1 ->
-                        {[x], ctxx} = fresh(1, ctx)
+              1 ->
+                {[x], ctxx} = fresh(1, ctx)
 
-                        {[
-                          match(
-                            var(x),
-                            mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
-                          )
-                        ], ast_next, [x | stack_next], ctxx}
+                {[
+                  match(
+                    var(x),
+                    mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
+                  )
+                ], ast_next, [x | stack_next], ctxx}
 
-                      _ ->
-                        {xs, ctxx} = fresh(return_count, ctx)
+              _ ->
+                {xs, ctxx} = fresh(return_count, ctx)
 
-                        {[
-                          match(
-                            tuple(Enum.map(xs, &var/1)),
-                            mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
-                          )
-                        ], ast_next, xs ++ stack_next, ctxx}
-                    end
-
-                  false ->
-                    case Map.get(ctx.words, word) do
-                      nil ->
-                        throw({:undefined_function, word})
-
-                      {arg_count, ret_count} ->
-                        {args, stack_next} = Enum.split(stack, arg_count)
-                        ^arg_count = length(args)
-
-                        call = local_call(String.to_atom(word), Enum.map(args, &var/1))
-
-                        {code, stack_, ctx_} =
-                          case ret_count do
-                            0 ->
-                              {call, stack_next, ctx}
-
-                            1 ->
-                              {[x], ctxx} = fresh(1, ctx)
-                              {match(var(x), call), [x | stack_next], ctxx}
-
-                            _ ->
-                              {xs, ctxx} = fresh(ret_count, ctx)
-                              {match(tuple(Enum.map(xs, &var/1)), call), xs ++ stack_next, ctxx}
-                          end
-
-                        {[code], ast, stack_, ctx_}
-                    end
-                end
+                {[
+                  match(
+                    tuple(Enum.map(xs, &var/1)),
+                    mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
+                  )
+                ], ast_next, xs ++ stack_next, ctxx}
             end
+          :func_call ->
+            case Map.get(ctx.words, word) do
+              nil ->
+                throw({:undefined_function, word})
 
-          _ ->
+              {arg_count, ret_count} ->
+                {args, stack_next} = Enum.split(stack, arg_count)
+                ^arg_count = length(args)
+
+                call = local_call(String.to_atom(word), Enum.map(args, &var/1))
+
+                {code, stack_, ctx_} =
+                  case ret_count do
+                    0 ->
+                      {call, stack_next, ctx}
+
+                    1 ->
+                      {[x], ctxx} = fresh(1, ctx)
+                      {match(var(x), call), [x | stack_next], ctxx}
+
+                    _ ->
+                      {xs, ctxx} = fresh(ret_count, ctx)
+                      {match(tuple(Enum.map(xs, &var/1)), call), xs ++ stack_next, ctxx}
+                  end
+
+                {[code], ast, stack_, ctx_}
+            end
+          :number ->
             {[word], ctxx} = fresh(1, ctx)
             {[match(var(word), {:integer, 1, num})], ast, [word | stack], ctxx}
         end
