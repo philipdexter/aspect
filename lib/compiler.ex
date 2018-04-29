@@ -82,6 +82,7 @@ defmodule Aspect.Compiler do
   end
 
   def fresh(0, ctx), do: {[], ctx}
+
   def fresh(num, %Ctx{fresh: fresh} = ctx) do
     fresh..(fresh + num - 1)
     |> Enum.map(fn x -> :erlang.list_to_atom('X' ++ :erlang.integer_to_list(x)) end)
@@ -135,7 +136,7 @@ defmodule Aspect.Compiler do
     load(code)
 
     # TODO need to uncomment this eventaully, when the feature is supported
-    #:_eval_expr._eval_expr()
+    # :_eval_expr._eval_expr()
 
     :code.purge(:_eval_expr)
     :code.delete(:_eval_expr)
@@ -161,7 +162,12 @@ defmodule Aspect.Compiler do
 
     # TODO need way to infer stack effects
 
-    {stack_func, [], [], _} = Aspect.Compiler.Builtins.colon(["_eval_expr", "(", "--", ")" | (Enum.reverse(stack) ++ [";"])], [], ctx)
+    {stack_func, [], [], _} =
+      Aspect.Compiler.Builtins.colon(
+        ["_eval_expr", "(", "--", ")" | Enum.reverse(stack) ++ [";"]],
+        [],
+        ctx
+      )
 
     [
       {:attribute, 1, :file, {'hi.as', 1}},
@@ -209,6 +215,7 @@ defmodule Aspect.Compiler do
                     {[
                        mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
                      ], ast_next, stack_next, ctx}
+
                   1 ->
                     {[x], ctxx} = fresh(1, ctx)
 
@@ -218,6 +225,7 @@ defmodule Aspect.Compiler do
                          mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
                        )
                      ], ast_next, [x | stack_next], ctxx}
+
                   _ ->
                     {xs, ctxx} = fresh(return_count, ctx)
 
@@ -232,22 +240,27 @@ defmodule Aspect.Compiler do
               false ->
                 case Map.get(ctx.words, word) do
                   nil ->
-                    throw {:undefined_function, word}
+                    throw({:undefined_function, word})
+
                   {arg_count, ret_count} ->
                     {args, stack_next} = Enum.split(stack, arg_count)
                     ^arg_count = length(args)
 
                     call = local_call(String.to_atom(word), Enum.map(args, &var/1))
 
-                    {code, stack_, ctx_} = case ret_count do
-                                     0 -> {call, stack_next, ctx}
-                                     1 ->
-                                       {[x], ctxx} = fresh(1, ctx)
-                                       {match(var(x), call), [x|stack_next], ctxx}
-                                     _ ->
-                                       {xs, ctxx} = fresh(ret_count, ctx)
-                                       {match(tuple(Enum.map(xs, &var/1)), call), xs ++ stack_next, ctxx}
-                                   end
+                    {code, stack_, ctx_} =
+                      case ret_count do
+                        0 ->
+                          {call, stack_next, ctx}
+
+                        1 ->
+                          {[x], ctxx} = fresh(1, ctx)
+                          {match(var(x), call), [x | stack_next], ctxx}
+
+                        _ ->
+                          {xs, ctxx} = fresh(ret_count, ctx)
+                          {match(tuple(Enum.map(xs, &var/1)), call), xs ++ stack_next, ctxx}
+                      end
 
                     {[code], ast, stack_, ctx_}
                 end
@@ -270,12 +283,13 @@ defmodule Aspect.Compiler do
 
   def parse_words(ast, stack, ctx) do
     f = fn f, code, ast, stack, ctx ->
-          case parse_word(ast, stack, ctx) do
-            {code_, [], stack_, ctx_} ->
-              {code ++ code_, stack_, ctx_}
-            {code_, ast_, stack_, ctx_} ->
-              f.(f, code ++ code_, ast_, stack_, ctx_)
-          end
+      case parse_word(ast, stack, ctx) do
+        {code_, [], stack_, ctx_} ->
+          {code ++ code_, stack_, ctx_}
+
+        {code_, ast_, stack_, ctx_} ->
+          f.(f, code ++ code_, ast_, stack_, ctx_)
+      end
     end
 
     f.(f, [], ast, stack, ctx)
@@ -283,11 +297,15 @@ defmodule Aspect.Compiler do
 
   def parse_word([word | ast], stack, ctx) do
     case parsing_word(word) do
-        # TODO handle numbers properly here maybe
-      :error -> {[], ast, [word | stack], ctx}
-      {:ok, f} -> f.(ast, stack, ctx)
+      # TODO handle numbers properly here maybe
+      :error ->
+        {[], ast, [word | stack], ctx}
+
+      {:ok, f} ->
+        f.(ast, stack, ctx)
     end
   end
+
   def parse_word([], [], ctx), do: {[], [], [], ctx}
 
   @spec compile_forms(AST.t(), stack, %Ctx{}) :: {[tuple()], AST.t(), stack, %Ctx{}}
@@ -316,7 +334,7 @@ defmodule Aspect.Compiler do
   end
 
   def compile_forms(["call(" | ast], [quot | stack], ctx) do
-    {num_args, num_ret, ast_rest} = parse_effect(["("|ast])
+    {num_args, num_ret, ast_rest} = parse_effect(["(" | ast])
 
     {arg_vars, ctxx} = fresh(num_args, ctx)
 
@@ -334,11 +352,12 @@ defmodule Aspect.Compiler do
 
     {code, ctxxx, ret_args} = f.(f, [], quot, arg_vars, ctxx)
 
-    full_code = case ret_args do
-                  [] -> code
-                  [v] -> code ++ [var(v)]
-                  s -> code ++ [tuple(Enum.map(s, &var/1))]
-                end
+    full_code =
+      case ret_args do
+        [] -> code
+        [v] -> code ++ [var(v)]
+        s -> code ++ [tuple(Enum.map(s, &var/1))]
+      end
 
     # assert the declared return stack effect is the same
     # as the number of values left on the stack
@@ -348,7 +367,8 @@ defmodule Aspect.Compiler do
     # todo can look at the effect of the called quot
     # for now let's assume it returns either 0 or 1 val
     call =
-      {:call, 12, {:fun, 12, {:clauses, [{:clause, 12, Enum.map(arg_vars, &var/1), [], full_code}]}},
+      {:call, 12,
+       {:fun, 12, {:clauses, [{:clause, 12, Enum.map(arg_vars, &var/1), [], full_code}]}},
        Enum.map(args_for_call, &var/1)}
 
     {code_, stack_, ctx_} =
@@ -393,8 +413,8 @@ defmodule Aspect.Compiler do
   end
 
   def parse_effect(ast) do
-    {["("|front], ["--"|rest]} = Enum.split_while(ast, fn x -> x != "--" end)
-    {back, [")"|next]} = Enum.split_while(rest, fn x -> x != ")" end)
+    {["(" | front], ["--" | rest]} = Enum.split_while(ast, fn x -> x != "--" end)
+    {back, [")" | next]} = Enum.split_while(rest, fn x -> x != ")" end)
     {length(front), length(back), next}
   end
 end
