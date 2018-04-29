@@ -53,6 +53,13 @@ defmodule AspectTest do
     assert 1 == :scratchpad.drop1(2, 1)
   end
 
+  test "parse token" do
+    load(compile_string("""
+    : pt ( -- x ) parse-token 1 drop 1 ;
+    """))
+    assert 1 == :scratchpad.pt()
+  end
+
   test "empty function" do
     load(compile_string("""
     : blank ( -- ) ;
@@ -94,6 +101,13 @@ defmodule AspectTest do
       eval_string(": h ( -- 1 ) 1 ; h 2 + .")
     end
     assert "Compiling string\n3\n" == capture_io(f)
+  end
+
+  test "quot and call" do
+    load(compile_string("""
+    : hello ( -- x x ) [ 1 2 + ] call( -- x ) [ dup 1 + ] call( x -- x x ) ;
+    """))
+    assert {4, 3} == :scratchpad.hello()
   end
 
   test "if" do

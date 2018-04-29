@@ -13,7 +13,13 @@ defmodule Aspect.Compiler do
     "-" => &Aspect.Compiler.Builtins.minus/3,
     "swap" => &Aspect.Compiler.Builtins.swap/3,
     "dup" => &Aspect.Compiler.Builtins.dup/3,
-    ":" => &Aspect.Compiler.Builtins.colon/3
+    ":" => &Aspect.Compiler.Builtins.colon/3,
+    "drop" => &Aspect.Compiler.Builtins.drop/3,
+    "." => &Aspect.Compiler.Builtins.pp/3,
+    "parse-token" => &Aspect.Compiler.Builtins.parse_token/3,
+    "[" => &Aspect.Compiler.Builtins.quot/3,
+    "if" => &Aspect.Compiler.Builtins.if/3,
+    "call(" => &Aspect.Compiler.Builtins.call/3
   }
 
   @parsing_words %{
@@ -151,8 +157,6 @@ defmodule Aspect.Compiler do
       {:attribute, 2, :compile, :export_all}
     ] ++ code ++ stack_func ++ [{:eof, 7}]
   end
-
-  # TODO case
 
   def compile_word(word, ast, stack, ctx) do
     case builtin(word) do
@@ -293,167 +297,17 @@ defmodule Aspect.Compiler do
 
   def parse_word([], [], ctx), do: {[], [], [], ctx}
 
+  # TODO compile_forms has to call the lexer directly to get new words
+  # this will allow the lexer to call parsing words
+  # because right now compile_forms bypasses the lexer
+
+  # TODO macros?
+
   @spec compile_forms(AST.t(), stack, %Ctx{}) :: {[tuple()], AST.t(), stack, %Ctx{}}
-
-  def compile_forms(["drop" | ast], [_a | stack], ctx) do
-    {[], ast, stack, ctx}
-  end
-
-  def compile_forms(["parse-token", token | ast], stack, ctx) do
-    {[], ast, [token | stack], ctx}
-  end
-
-  def compile_forms(["[" | ast], stack, ctx) do
-    {quot_r, ast_rest} = parse_quotation(ast, [])
-    quot = Enum.reverse(quot_r)
-    {[], ast_rest, [quot | stack], ctx}
-  end
-
-  def compile_forms(["if" | ast], [fc, tc, b | stack], ctx) do
-    # TODO consider changing this to match on :false
-    # and then everything else is considered true
-
-    # TODO assuming the branches don't take any args, bad!!!
-    # need way to tell statically how many they need, then
-    # give them that much
-
-    # TODO assuming the branches all return one arg, bad!!!
-
-    f = fn f, code, ast, stack, ctx ->
-      case compile_forms(ast, stack, ctx) do
-        {code_, [], ret_args, ctx_} ->
-          {code ++ code_, ctx_, ret_args}
-
-        {code_, ast_, stack_, ctx_} ->
-          f.(f, code ++ code_, ast_, stack_, ctx_)
-      end
-    end
-
-    {tc_code, ctxx, tc_ret_args} = f.(f, [], tc, [], ctx)
-    {fc_code, ctxxx, fc_ret_args} = f.(f, [], fc, [], ctxx)
-
-    tmp = length(tc_ret_args)
-    ^tmp = 1
-    ^tmp = length(fc_ret_args)
-
-    tc_full_code =
-    [{:call, 1,
-      {:fun, 1, {:clauses, [{:clause, 1, [], [],
-                             case tc_ret_args do
-                               [] -> tc_code
-                               [v] -> tc_code ++ [var(v)]
-                               s -> tc_code ++ [tuple(Enum.map(s, &var/1))]
-                             end}]}}, []}]
-
-    fc_full_code =
-      [{:call, 1,
-        {:fun, 1, {:clauses, [{:clause, 1, [], [],
-                               case fc_ret_args do
-                                 [] -> fc_code
-                                 [v] -> fc_code ++ [var(v)]
-                                 s -> fc_code ++ [tuple(Enum.map(s, &var/1))]
-                               end}]}}, []}]
-
-    {[ret_var], ctxxxx} = fresh(1, ctxxx)
-
-    code =
-      match(var(ret_var),
-        {:case, 1, var(b), [{:clause, 1, [{:atom, 1, :true}], [], tc_full_code},
-                            {:clause, 1, [{:atom, 1, :false}], [], fc_full_code}]})
-    {[code], ast, [ret_var | stack], ctxxxx}
-  end
-
-  def compile_forms(["." | ast], [x | stack], ctx) do
-    {[
-       mfa_call(:io, :format, [
-         {:string, 15, [126, 112, 126, 110]},
-         {:cons, 15, var(x), {nil, 15}}
-       ])
-     ], ast, stack, ctx}
-  end
-
-  def compile_forms(["call(" | ast], [quot | stack], ctx) do
-    {num_args, num_ret, ast_rest} = parse_effect(["(" | ast])
-
-    {arg_vars, ctxx} = fresh(num_args, ctx)
-
-    {args_for_call, stack_rest} = Enum.split(stack, num_args)
-
-    f = fn f, code, ast, stack, ctx ->
-      case compile_forms(ast, stack, ctx) do
-        {code_, [], ret_args, ctx_} ->
-          {code ++ code_, ctx_, ret_args}
-
-        {code_, ast_, stack_, ctx_} ->
-          f.(f, code ++ code_, ast_, stack_, ctx_)
-      end
-    end
-
-    {code, ctxxx, ret_args} = f.(f, [], quot, arg_vars, ctxx)
-
-    full_code =
-      case ret_args do
-        [] -> code
-        [v] -> code ++ [var(v)]
-        s -> code ++ [tuple(Enum.map(s, &var/1))]
-      end
-
-    # assert the declared return stack effect is the same
-    # as the number of values left on the stack
-    ^num_ret = length(ret_args)
-
-    # todo quots that return more than 1
-    # todo can look at the effect of the called quot
-    # for now let's assume it returns either 0 or 1 val
-    call =
-      {:call, 12,
-       {:fun, 12, {:clauses, [{:clause, 12, Enum.map(arg_vars, &var/1), [], full_code}]}},
-       Enum.map(args_for_call, &var/1)}
-
-    {code_, stack_, ctx_} =
-      case ret_args do
-        [] ->
-          {call, stack_rest, ctxxx}
-
-        [_] ->
-          {[v], c} = fresh(1, ctxxx)
-          {match(var(v), call), [v | stack_rest], c}
-
-        _ ->
-          {vs, c} = fresh(length(ret_args), ctxxx)
-          {match(tuple(Enum.map(vs, &var/1)), call), vs ++ stack_rest, c}
-      end
-
-    {[code_], ast_rest, stack_, ctx_}
-  end
 
   def compile_forms([x | ast], stack, ctx) do
     compile_word(x, ast, stack, ctx)
   end
 
   def compile_forms([], [], ctx), do: {[], [], [], ctx}
-
-  # by default we should parse stuff by putting it on the stack
-
-  def parse_body([";" | ast], stack) do
-    {stack, ast}
-  end
-
-  def parse_body([token | ast], stack) do
-    parse_body(ast, [token | stack])
-  end
-
-  def parse_quotation(["]" | ast], stack) do
-    {stack, ast}
-  end
-
-  def parse_quotation([token | ast], stack) do
-    parse_quotation(ast, [token | stack])
-  end
-
-  def parse_effect(ast) do
-    {["(" | front], ["--" | rest]} = Enum.split_while(ast, fn x -> x != "--" end)
-    {back, [")" | next]} = Enum.split_while(rest, fn x -> x != ")" end)
-    {length(front), length(back), next}
-  end
 end
