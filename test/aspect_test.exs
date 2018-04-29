@@ -95,4 +95,16 @@ defmodule AspectTest do
     end
     assert "Compiling string\n3\n" == capture_io(f)
   end
+
+  test "if" do
+    load(compile_string("""
+    : true ( -- x ) :true [ 1 ] [ 2 ] if ;
+    : false ( -- x ) :false [ 1 ] [ 2 ] if ;
+    : check ( x -- y ) [ 1 ] [ 2 ] if ;
+    """))
+    assert 1 == :scratchpad.true()
+    assert 2 == :scratchpad.false()
+    assert 1 == :scratchpad.check(:true)
+    assert 2 == :scratchpad.check(:false)
+  end
 end

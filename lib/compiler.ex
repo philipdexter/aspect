@@ -171,80 +171,86 @@ defmodule Aspect.Compiler do
         case num do
           :error ->
             # TODO better organize
-            case String.contains?(word, "/") do
+            case String.starts_with?(word, ":") do
               true ->
-                # call setup
-                [arg_count, return_count] =
-                  word
-                  |> String.split("/")
-                  |> Enum.map(&elem(Integer.parse(&1), 0))
-
-                [func | ast_next] = ast
-                # TODO maybe borrow from elixir, use dot and somehow
-                # distinguish beween elixir, erlang, and aspect calls
-                [m, f] = String.split(func, ":")
-                {args, stack_next} = Enum.split(stack, arg_count)
-                ^arg_count = length(args)
-
-                case return_count do
-                  0 ->
-                    {[
-                       mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
-                     ], ast_next, stack_next, ctx}
-
-                  1 ->
-                    {[x], ctxx} = fresh(1, ctx)
-
-                    {[
-                       match(
-                         var(x),
-                         mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
-                       )
-                     ], ast_next, [x | stack_next], ctxx}
-
-                  _ ->
-                    {xs, ctxx} = fresh(return_count, ctx)
-
-                    {[
-                       match(
-                         tuple(Enum.map(xs, &var/1)),
-                         mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
-                       )
-                     ], ast_next, xs ++ stack_next, ctxx}
-                end
-
+                {[x], ctxx} = fresh(1, ctx)
+                {[match(var(x), {:atom, 1, String.to_atom(String.slice(word, 1..-1))})], ast, [x | stack], ctxx}
               false ->
-                case Map.get(ctx.words, word) do
-                  nil ->
-                    throw({:undefined_function, word})
+                case String.contains?(word, "/") do
+                  true ->
+                    # call setup
+                    [arg_count, return_count] =
+                      word
+                      |> String.split("/")
+                      |> Enum.map(&elem(Integer.parse(&1), 0))
 
-                  {arg_count, ret_count} ->
+                    [func | ast_next] = ast
+                    # TODO maybe borrow from elixir, use dot and somehow
+                    # distinguish beween elixir, erlang, and aspect calls
+                    [m, f] = String.split(func, ":")
                     {args, stack_next} = Enum.split(stack, arg_count)
                     ^arg_count = length(args)
 
-                    call = local_call(String.to_atom(word), Enum.map(args, &var/1))
+                    case return_count do
+                      0 ->
+                        {[
+                          mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
+                        ], ast_next, stack_next, ctx}
 
-                    {code, stack_, ctx_} =
-                      case ret_count do
-                        0 ->
-                          {call, stack_next, ctx}
+                      1 ->
+                        {[x], ctxx} = fresh(1, ctx)
 
-                        1 ->
-                          {[x], ctxx} = fresh(1, ctx)
-                          {match(var(x), call), [x | stack_next], ctxx}
+                        {[
+                          match(
+                            var(x),
+                            mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
+                          )
+                        ], ast_next, [x | stack_next], ctxx}
 
-                        _ ->
-                          {xs, ctxx} = fresh(ret_count, ctx)
-                          {match(tuple(Enum.map(xs, &var/1)), call), xs ++ stack_next, ctxx}
-                      end
+                      _ ->
+                        {xs, ctxx} = fresh(return_count, ctx)
 
-                    {[code], ast, stack_, ctx_}
+                        {[
+                          match(
+                            tuple(Enum.map(xs, &var/1)),
+                            mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
+                          )
+                        ], ast_next, xs ++ stack_next, ctxx}
+                    end
+
+                  false ->
+                    case Map.get(ctx.words, word) do
+                      nil ->
+                        throw({:undefined_function, word})
+
+                      {arg_count, ret_count} ->
+                        {args, stack_next} = Enum.split(stack, arg_count)
+                        ^arg_count = length(args)
+
+                        call = local_call(String.to_atom(word), Enum.map(args, &var/1))
+
+                        {code, stack_, ctx_} =
+                          case ret_count do
+                            0 ->
+                              {call, stack_next, ctx}
+
+                            1 ->
+                              {[x], ctxx} = fresh(1, ctx)
+                              {match(var(x), call), [x | stack_next], ctxx}
+
+                            _ ->
+                              {xs, ctxx} = fresh(ret_count, ctx)
+                              {match(tuple(Enum.map(xs, &var/1)), call), xs ++ stack_next, ctxx}
+                          end
+
+                        {[code], ast, stack_, ctx_}
+                    end
                 end
             end
 
           _ ->
             {[word], ctxx} = fresh(1, ctx)
-            {[match(var(word), {:integer, 9, num})], ast, [word | stack], ctxx}
+            {[match(var(word), {:integer, 1, num})], ast, [word | stack], ctxx}
         end
     end
   end
@@ -298,6 +304,60 @@ defmodule Aspect.Compiler do
     {quot_r, ast_rest} = parse_quotation(ast, [])
     quot = Enum.reverse(quot_r)
     {[], ast_rest, [quot | stack], ctx}
+  end
+
+  def compile_forms(["if" | ast], [fc, tc, b | stack], ctx) do
+    # TODO consider changing this to match on :false
+    # and then everything else is considered true
+
+    # TODO assuming the branches don't take any args, bad!!!
+    # need way to tell statically how many they need, then
+    # give them that much
+
+    # TODO assuming the branches all return one arg, bad!!!
+
+    f = fn f, code, ast, stack, ctx ->
+      case compile_forms(ast, stack, ctx) do
+        {code_, [], ret_args, ctx_} ->
+          {code ++ code_, ctx_, ret_args}
+
+        {code_, ast_, stack_, ctx_} ->
+          f.(f, code ++ code_, ast_, stack_, ctx_)
+      end
+    end
+
+    {tc_code, ctxx, tc_ret_args} = f.(f, [], tc, [], ctx)
+    {fc_code, ctxxx, fc_ret_args} = f.(f, [], fc, [], ctxx)
+
+    tmp = length(tc_ret_args)
+    ^tmp = 1
+    ^tmp = length(fc_ret_args)
+
+    tc_full_code =
+    [{:call, 1,
+      {:fun, 1, {:clauses, [{:clause, 1, [], [],
+                             case tc_ret_args do
+                               [] -> tc_code
+                               [v] -> tc_code ++ [var(v)]
+                               s -> tc_code ++ [tuple(Enum.map(s, &var/1))]
+                             end}]}}, []}]
+
+    fc_full_code =
+      [{:call, 1,
+        {:fun, 1, {:clauses, [{:clause, 1, [], [],
+                               case fc_ret_args do
+                                 [] -> fc_code
+                                 [v] -> fc_code ++ [var(v)]
+                                 s -> fc_code ++ [tuple(Enum.map(s, &var/1))]
+                               end}]}}, []}]
+
+    {[ret_var], ctxxxx} = fresh(1, ctxxx)
+
+    code =
+      match(var(ret_var),
+        {:case, 1, var(b), [{:clause, 1, [{:atom, 1, :true}], [], tc_full_code},
+                            {:clause, 1, [{:atom, 1, :false}], [], fc_full_code}]})
+    {[code], ast, [ret_var | stack], ctxxxx}
   end
 
   def compile_forms(["." | ast], [x | stack], ctx) do
