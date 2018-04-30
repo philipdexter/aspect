@@ -46,7 +46,6 @@ defmodule Aspect.Compiler.Builtins do
     {[], ast_rest, [quot | stack], ctx}
   end
 
-
   def if(ast, [fc, tc, b | stack], ctx) do
     # TODO consider changing this to match on :false
     # and then everything else is considered true
@@ -137,52 +136,62 @@ defmodule Aspect.Compiler.Builtins do
 
   def colon([func_name | ast], stack, ctx) do
     {arg_count, ret_count, ast_body} = parse_effect(ast)
-    {arg_vars, ctxx} = fresh(arg_count, ctx)
     {body_r, ast_rest} = parse_body(ast_body, [])
     body = Enum.reverse(body_r)
 
-    {code, stack_rest, ctxxx} = gen_code(body, arg_vars, ctxx)
+    {arg_vars, ctx} = fresh(arg_count, ctx)
 
-    full_code = case stack_rest do
-                  [] -> code
-                  [v] -> code ++ [var(v)]
-                  s -> code ++ [tuple(Enum.map(s, &var/1))]
-                end
+    {code, stack_rest, ctx} = gen_code(body, arg_vars, ctx)
 
-    full_code = case full_code do
-                  [] -> [{:atom, 1, :ok}]
-                  _ -> full_code
-                end
+    full_code =
+      code
+      |> ret_stack(stack_rest)
+      |> ensure_ret()
 
     # assert the declared return stack effect is the same
     # as the number of values left on the stack
     ^ret_count = length(stack_rest)
 
-    ctxxxx = define_with_effect(func_name, arg_count, ret_count, ctxxx)
+    ctx = define_with_effect(func_name, arg_count, ret_count, ctx)
 
-    {[
-       {:function, 5, String.to_atom(func_name), arg_count,
-        [{:clause, 5, Enum.map(arg_vars, &var/1), [], full_code}]}
-     ], ast_rest, stack, ctxxxx}
+    function = {:function, 5, String.to_atom(func_name), arg_count,
+                [{:clause, 5, Enum.map(arg_vars, &var/1), [], full_code}]}
+
+    {[function], ast_rest, stack, ctx}
   end
 
-  def parse_body([";" | ast], stack) do
+  defp ret_stack(code, stack_vars) do
+    case stack_vars do
+      [] -> code
+      [x] -> code ++ [var(x)]
+      _ -> code ++ [tuple(Enum.map(stack_vars, &var/1))]
+    end
+  end
+
+  defp ensure_ret(code) do
+    case code do
+      [] -> [{:atom, 1, :ok}]
+      _ -> code
+    end
+  end
+
+  defp parse_body([";" | ast], stack) do
     {stack, ast}
   end
 
-  def parse_body([token | ast], stack) do
+  defp parse_body([token | ast], stack) do
     parse_body(ast, [token | stack])
   end
 
-  def parse_quotation(["]" | ast], stack) do
+  defp parse_quotation(["]" | ast], stack) do
     {stack, ast}
   end
 
-  def parse_quotation([token | ast], stack) do
+  defp parse_quotation([token | ast], stack) do
     parse_quotation(ast, [token | stack])
   end
 
-  def parse_effect(ast) do
+  defp parse_effect(ast) do
     {["(" | front], ["--" | rest]} = Enum.split_while(ast, fn x -> x != "--" end)
     {back, [")" | next]} = Enum.split_while(rest, fn x -> x != ")" end)
     {length(front), length(back), next}
