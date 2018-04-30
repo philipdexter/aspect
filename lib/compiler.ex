@@ -271,17 +271,14 @@ defmodule Aspect.Compiler do
   end
 
   def parse_words(ast, stack, ctx) do
-    f = fn f, code, ast, stack, ctx ->
-      case parse_word(ast, stack, ctx) do
-        {code_, [], stack_, ctx_} ->
-          {code ++ code_, stack_, ctx_}
-
-        {code_, ast_, stack_, ctx_} ->
-          f.(f, code ++ code_, ast_, stack_, ctx_)
-      end
-    end
-
-    f.(f, [], ast, stack, ctx)
+    parse_words_aux([], ast, stack, ctx)
+  end
+  def parse_words_aux(code, [], stack, ctx) do
+    {code, stack, ctx}
+  end
+  def parse_words_aux(code, ast, stack, ctx) do
+    {code_, ast_, stack_, ctx_} = parse_word(ast, stack, ctx)
+    parse_words_aux(code ++ code_, ast_, stack_, ctx_)
   end
 
   def parse_word([word | ast], stack, ctx) do
@@ -302,6 +299,18 @@ defmodule Aspect.Compiler do
   # because right now compile_forms bypasses the lexer
 
   # TODO macros?
+
+  @spec gen_code(AST.t(), stack, %Ctx{}) :: {[tuple()], stack, %Ctx{}}
+  def gen_code(ast, stack, ctx) do
+    gen_code_aux([], ast, stack, ctx)
+  end
+  def gen_code_aux(code, [], stack, ctx) do
+    {code, stack, ctx}
+  end
+  def gen_code_aux(code, ast, stack, ctx) do
+    {code_, ast_, stack_, ctx_} = compile_forms(ast, stack, ctx)
+    gen_code_aux(code ++ code_, ast_, stack_, ctx_)
+  end
 
   @spec compile_forms(AST.t(), stack, %Ctx{}) :: {[tuple()], AST.t(), stack, %Ctx{}}
 

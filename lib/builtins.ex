@@ -57,22 +57,11 @@ defmodule Aspect.Compiler.Builtins do
 
     # TODO assuming the branches all return one arg, bad!!!
 
-    f = fn f, code, ast, stack, ctx ->
-      case compile_forms(ast, stack, ctx) do
-        {code_, [], ret_args, ctx_} ->
-          {code ++ code_, ctx_, ret_args}
+    {tc_code, tc_ret_args, ctxx} = gen_code(tc, [], ctx)
+    {fc_code, fc_ret_args, ctxxx} = gen_code(fc, [], ctxx)
 
-        {code_, ast_, stack_, ctx_} ->
-          f.(f, code ++ code_, ast_, stack_, ctx_)
-      end
-    end
-
-    {tc_code, ctxx, tc_ret_args} = f.(f, [], tc, [], ctx)
-    {fc_code, ctxxx, fc_ret_args} = f.(f, [], fc, [], ctxx)
-
-    tmp = length(tc_ret_args)
-    ^tmp = 1
-    ^tmp = length(fc_ret_args)
+    1 = length(tc_ret_args)
+    1 = length(fc_ret_args)
 
     tc_full_code =
     [{:call, 1,
@@ -108,17 +97,7 @@ defmodule Aspect.Compiler.Builtins do
 
     {args_for_call, stack_rest} = Enum.split(stack, num_args)
 
-    f = fn f, code, ast, stack, ctx ->
-      case compile_forms(ast, stack, ctx) do
-        {code_, [], ret_args, ctx_} ->
-          {code ++ code_, ctx_, ret_args}
-
-        {code_, ast_, stack_, ctx_} ->
-          f.(f, code ++ code_, ast_, stack_, ctx_)
-      end
-    end
-
-    {code, ctxxx, ret_args} = f.(f, [], quot, arg_vars, ctxx)
+    {code, ret_args, ctxxx} = gen_code(quot, arg_vars, ctxx)
 
     full_code =
       case ret_args do
@@ -162,21 +141,7 @@ defmodule Aspect.Compiler.Builtins do
     {body_r, ast_rest} = parse_body(ast_body, [])
     body = Enum.reverse(body_r)
 
-    f = fn
-      _, code, [], stack, ctx ->
-        {code, stack, ctx}
-
-      f, code, ast, stack, ctx ->
-        case compile_forms(ast, stack, ctx) do
-          {code_, [], [], ctx_} ->
-            {code ++ code_, [], ctx_}
-
-          {code_, ast_, stack_, ctx_} ->
-            f.(f, code ++ code_, ast_, stack_, ctx_)
-        end
-    end
-
-    {code, stack_rest, ctxxx} = f.(f, [], body, arg_vars, ctxx)
+    {code, stack_rest, ctxxx} = gen_code(body, arg_vars, ctxx)
 
     full_code = case stack_rest do
                   [] -> code
