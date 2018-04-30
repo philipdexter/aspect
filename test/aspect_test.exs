@@ -121,4 +121,20 @@ defmodule AspectTest do
     assert 1 == :scratchpad.check(:true)
     assert 2 == :scratchpad.check(:false)
   end
+
+  test "infer" do
+    load(compile_string("""
+    : a ( -- x ) [ 1 ] infer ;
+    : b ( -- x ) [ :hi ] infer ;
+    : c ( -- x ) [ a b ] infer ;
+    : d ( -- x ) [ + + ] infer ;
+    : e ( -- x ) [ 1 + 2 + ] infer ;
+    : f ( -- x ) [ + 2 + ] infer ;
+    """))
+    assert {0, 1} == :scratchpad.a()
+    assert {0, 1} == :scratchpad.b()
+    assert {0, 2} == :scratchpad.c()
+    assert {3, 1} == :scratchpad.d()
+    assert {2, 1} == :scratchpad.f()
+  end
 end

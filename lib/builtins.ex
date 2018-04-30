@@ -46,6 +46,42 @@ defmodule Aspect.Compiler.Builtins do
     {[], ast_rest, [quot | stack], ctx}
   end
 
+  def infer(ast, [quot | stack], ctx) do
+    answer = infer_stack_effect(quot, stack, ctx)
+    {[x], ctx} = fresh(1, ctx)
+    {[match(var(x), {:tuple, 1, Enum.map(Tuple.to_list(answer), fn x -> {:integer, 1, x} end)})], ast, [x | stack], ctx}
+  end
+
+  def calc_stack_effect({a, b}, {0, 0}), do: {a, b}
+  def calc_stack_effect({a, b}, {0, y}), do: {a, b + y}
+  def calc_stack_effect({a, b}, {x, y}) when b > 0, do: calc_stack_effect({a, b - 1}, {x - 1, y})
+  def calc_stack_effect({a, b}, {x, y}), do: calc_stack_effect({a + 1, b}, {x - 1, y})
+
+  def infer_stack_effect(quot, stack, ctx) do
+    List.foldl(quot, {0, 0}, fn elem, {a, b} ->
+      {x, y} = infer_stack_effect(elem, ctx)
+      calc_stack_effect({a, b}, {x, y})
+    end)
+  end
+
+  def infer_stack_effect(word, ctx) do
+    case Aspect.Compiler.word_type(word) do
+      :builtin ->
+        {:ok, {_, effect}} = Aspect.Compiler.builtin(word)
+        effect
+      :atom -> {0, 1}
+      :number -> {0, 1}
+      :call_setup -> :ok
+      :func_call ->
+        case Map.get(ctx.words, word) do
+          nil ->
+            throw({:undefined_function, word})
+          effect->
+            effect
+        end
+    end
+  end
+
   def if(ast, [fc, tc, b | stack], ctx) do
     # TODO consider changing this to match on :false
     # and then everything else is considered true

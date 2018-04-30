@@ -9,17 +9,22 @@
 
 defmodule Aspect.Compiler do
   @builtins %{
-    "+" => &Aspect.Compiler.Builtins.plus/3,
-    "-" => &Aspect.Compiler.Builtins.minus/3,
-    "swap" => &Aspect.Compiler.Builtins.swap/3,
-    "dup" => &Aspect.Compiler.Builtins.dup/3,
-    ":" => &Aspect.Compiler.Builtins.colon/3,
-    "drop" => &Aspect.Compiler.Builtins.drop/3,
-    "." => &Aspect.Compiler.Builtins.pp/3,
-    "parse-token" => &Aspect.Compiler.Builtins.parse_token/3,
-    "[" => &Aspect.Compiler.Builtins.quot/3,
-    "if" => &Aspect.Compiler.Builtins.if/3,
-    "call(" => &Aspect.Compiler.Builtins.call/3
+    # TODO these stack effects are hacks, especially for : and call(
+    # need to figure out how to compute stack effects
+    # as the parsing goes
+    # need to plan how we put stuff on the stack while parsing
+    # and put the stack effect there
+    "+" => {&Aspect.Compiler.Builtins.plus/3, {2, 1}},
+    "-" => {&Aspect.Compiler.Builtins.minus/3, {2, 1}},
+    "swap" => {&Aspect.Compiler.Builtins.swap/3, {2, 2}},
+    "dup" => {&Aspect.Compiler.Builtins.dup/3, {1, 2}},
+    "drop" => {&Aspect.Compiler.Builtins.drop/3, {1, 0}},
+    "." => {&Aspect.Compiler.Builtins.pp/3, {1, 0}},
+    "parse-token" => {&Aspect.Compiler.Builtins.parse_token/3, {0, 0}},
+    "[" => {&Aspect.Compiler.Builtins.quot/3, {0, 0}},
+    "if" => {&Aspect.Compiler.Builtins.if/3, {3, 1}},
+    "call(" => {&Aspect.Compiler.Builtins.call/3, {0, 0}},
+    "infer" => {&Aspect.Compiler.Builtins.infer/3, {1, 1}},
   }
 
   @parsing_words %{
@@ -158,33 +163,36 @@ defmodule Aspect.Compiler do
     ] ++ code ++ stack_func ++ [{:eof, 7}]
   end
 
-  def compile_word(word, ast, stack, ctx) do
+  @spec word_type(String.t()) :: :atom | :call_setup | :func_call | :number | :builtin
+  def word_type(word) do
     case builtin(word) do
-      {:ok, w} ->
-        w.(ast, stack, ctx)
-
+      {:ok, _} -> :builtin
       _ ->
-        # other
-        num =
+        num? =
           try do
             String.to_integer(word)
           rescue
             ArgumentError -> :error
           end
 
-        type =
-          case num do
-            :error -> case String.starts_with?(word, ":") do
-                        true -> :atom
-                        false -> case String.contains?(word, "/") do
-                                   true -> :call_setup
-                                   false -> :func_call
-                                 end
-                      end
-            _ -> :number
-          end
+        case num? do
+          :error -> case String.starts_with?(word, ":") do
+                      true -> :atom
+                      false -> case String.contains?(word, "/") do
+                                 true -> :call_setup
+                                 false -> :func_call
+                               end
+                    end
+          _ -> :number
+        end
+    end
+  end
 
-        case type do
+  def compile_word(word, ast, stack, ctx) do
+    case word_type(word) do
+          :builtin ->
+            {:ok, {w, _}} = builtin(word)
+            w.(ast, stack, ctx)
           :atom ->
                 {[x], ctxx} = fresh(1, ctx)
                 {[match(var(x), {:atom, 1, String.to_atom(String.slice(word, 1..-1))})], ast, [x | stack], ctxx}
@@ -228,37 +236,36 @@ defmodule Aspect.Compiler do
                   )
                 ], ast_next, xs ++ stack_next, ctxx}
             end
-          :func_call ->
-            case Map.get(ctx.words, word) do
-              nil ->
-                throw({:undefined_function, word})
+      :func_call ->
+        case Map.get(ctx.words, word) do
+          nil ->
+            throw({:undefined_function, word})
 
-              {arg_count, ret_count} ->
-                {args, stack_next} = Enum.split(stack, arg_count)
-                ^arg_count = length(args)
+          {arg_count, ret_count} ->
+            {args, stack_next} = Enum.split(stack, arg_count)
+            ^arg_count = length(args)
 
-                call = local_call(String.to_atom(word), Enum.map(args, &var/1))
+            call = local_call(String.to_atom(word), Enum.map(args, &var/1))
 
-                {code, stack_, ctx_} =
-                  case ret_count do
-                    0 ->
-                      {call, stack_next, ctx}
+            {code, stack_, ctx_} =
+              case ret_count do
+                0 ->
+                  {call, stack_next, ctx}
 
-                    1 ->
-                      {[x], ctxx} = fresh(1, ctx)
-                      {match(var(x), call), [x | stack_next], ctxx}
+                1 ->
+                  {[x], ctxx} = fresh(1, ctx)
+                  {match(var(x), call), [x | stack_next], ctxx}
 
-                    _ ->
-                      {xs, ctxx} = fresh(ret_count, ctx)
-                      {match(tuple(Enum.map(xs, &var/1)), call), xs ++ stack_next, ctxx}
-                  end
+                _ ->
+                  {xs, ctxx} = fresh(ret_count, ctx)
+                  {match(tuple(Enum.map(xs, &var/1)), call), xs ++ stack_next, ctxx}
+              end
 
-                {[code], ast, stack_, ctx_}
-            end
-          :number ->
-            {[word], ctxx} = fresh(1, ctx)
-            {[match(var(word), {:integer, 1, num})], ast, [word | stack], ctxx}
+            {[code], ast, stack_, ctx_}
         end
+      :number ->
+        {[x], ctxx} = fresh(1, ctx)
+        {[match(var(x), {:integer, 1, String.to_integer(word)})], ast, [x | stack], ctxx}
     end
   end
 
