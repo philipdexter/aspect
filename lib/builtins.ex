@@ -41,13 +41,12 @@ defmodule Aspect.Compiler.Builtins do
   end
 
   def quot(ast, stack, ctx) do
-    {quot_r, ast_rest} = parse_quotation(ast, [])
-    quot = Enum.reverse(quot_r)
-    {[], ast_rest, [quot | stack], ctx}
+    {code, ast_rest, quot_r, ctx} = parse_quotation(ast, [], ctx)
+    {code, ast_rest, [Enum.reverse(quot_r) | stack], ctx}
   end
 
   def infer(ast, [quot | stack], ctx) do
-    answer = infer_stack_effect(quot, stack, ctx)
+    answer = infer_stack_effect(quot, ctx)
     {[x], ctx} = fresh(1, ctx)
     {[match(var(x), {:tuple, 1, Enum.map(Tuple.to_list(answer), fn x -> {:integer, 1, x} end)})], ast, [x | stack], ctx}
   end
@@ -57,14 +56,14 @@ defmodule Aspect.Compiler.Builtins do
   def calc_stack_effect({a, b}, {x, y}) when b > 0, do: calc_stack_effect({a, b - 1}, {x - 1, y})
   def calc_stack_effect({a, b}, {x, y}), do: calc_stack_effect({a + 1, b}, {x - 1, y})
 
-  def infer_stack_effect(quot, stack, ctx) do
+  def infer_stack_effect(quot, ctx) do
     List.foldl(quot, {0, 0}, fn elem, {a, b} ->
-      {x, y} = infer_stack_effect(elem, ctx)
+      {x, y} = infer_stack_effect_single(elem, ctx)
       calc_stack_effect({a, b}, {x, y})
     end)
   end
 
-  def infer_stack_effect(word, ctx) do
+  def infer_stack_effect_single(word, ctx) do
     case Aspect.Compiler.word_type(word) do
       :builtin ->
         {:ok, {_, effect}} = Aspect.Compiler.builtin(word)
@@ -172,7 +171,7 @@ defmodule Aspect.Compiler.Builtins do
 
   def colon([func_name | ast], stack, ctx) do
     {arg_count, ret_count, ast_body} = parse_effect(ast)
-    {body_r, ast_rest} = parse_body(ast_body, [])
+    {code_, ast_rest, body_r, ctx} = parse_body(ast_body, [], ctx)
     body = Enum.reverse(body_r)
 
     {arg_vars, ctx} = fresh(arg_count, ctx)
@@ -180,7 +179,7 @@ defmodule Aspect.Compiler.Builtins do
     {code, stack_rest, ctx} = gen_code(body, arg_vars, ctx)
 
     full_code =
-      code
+      code_ ++ code
       |> ret_stack(stack_rest)
       |> ensure_ret()
 
@@ -211,20 +210,26 @@ defmodule Aspect.Compiler.Builtins do
     end
   end
 
-  defp parse_body([";" | ast], stack) do
-    {stack, ast}
+  defp parse_body(ast, stack, ctx) do
+    parse_body_aux([], ast, stack, ctx)
+  end
+  defp parse_body_aux(code, ast, stack, ctx) do
+    {code_, ast, stack, ctx} = Aspect.Lexer.parse_word(ast, stack, ctx)
+    case stack do
+      [";" | stack] -> {code ++ code_, ast, stack, ctx}
+      _ -> parse_body_aux(code ++ code_, ast, stack, ctx)
+    end
   end
 
-  defp parse_body([token | ast], stack) do
-    parse_body(ast, [token | stack])
+  defp parse_quotation(ast, stack, ctx) do
+    parse_quotation_aux([], ast, stack, ctx)
   end
-
-  defp parse_quotation(["]" | ast], stack) do
-    {stack, ast}
-  end
-
-  defp parse_quotation([token | ast], stack) do
-    parse_quotation(ast, [token | stack])
+  defp parse_quotation_aux(code, ast, stack, ctx) do
+    {code_, ast, stack, ctx} = Aspect.Lexer.parse_word(ast, stack, ctx)
+    case stack do
+      ["]" | stack] -> {code ++ code_, ast, stack, ctx}
+      _ -> parse_quotation_aux(code ++ code_, ast, stack, ctx)
+    end
   end
 
   defp parse_effect(ast) do

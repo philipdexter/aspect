@@ -55,9 +55,16 @@ defmodule AspectTest do
 
   test "parse token" do
     load(compile_string("""
-    : pt ( -- x ) parse-token 1 drop 1 ;
+    : pt ( -- x ) parse-token 2 drop 1 ;
     """))
     assert 1 == :scratchpad.pt()
+  end
+
+  test "parse token in quot" do
+    f = fn ->
+      eval_string("[ parse-token 2 drop 1 ] call( -- x ) .")
+    end
+    assert "Compiling string\n1\n" == capture_io(f)
   end
 
   test "empty function" do

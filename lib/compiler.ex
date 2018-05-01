@@ -20,16 +20,10 @@ defmodule Aspect.Compiler do
     "dup" => {&Aspect.Compiler.Builtins.dup/3, {1, 2}},
     "drop" => {&Aspect.Compiler.Builtins.drop/3, {1, 0}},
     "." => {&Aspect.Compiler.Builtins.pp/3, {1, 0}},
-    "parse-token" => {&Aspect.Compiler.Builtins.parse_token/3, {0, 0}},
     "[" => {&Aspect.Compiler.Builtins.quot/3, {0, 0}},
     "if" => {&Aspect.Compiler.Builtins.if/3, {3, 1}},
     "call(" => {&Aspect.Compiler.Builtins.call/3, {0, 0}},
     "infer" => {&Aspect.Compiler.Builtins.infer/3, {1, 1}},
-  }
-
-  @parsing_words %{
-    ":" => &Aspect.Compiler.Builtins.colon/3,
-    "M:" => &Aspect.Compiler.Builtins.set_module/3
   }
 
   # TODO test empty function definition
@@ -111,7 +105,7 @@ defmodule Aspect.Compiler do
   end
 
   def ast_to_eaf_module(ast) do
-    {code, [], ctx} = parse_words(ast, [], %Ctx{})
+    {code, [], ctx} = Aspect.Lexer.parse_words(ast, [], %Ctx{})
 
     [
       {:attribute, 1, :file, {'hi.as', 1}},
@@ -145,7 +139,7 @@ defmodule Aspect.Compiler do
   end
 
   def ast_to_eaf_words(ast) do
-    {code, stack, ctx} = parse_words(ast, [], %Ctx{})
+    {code, stack, ctx} = Aspect.Lexer.parse_words(ast, [], %Ctx{})
 
     # TODO need way to infer stack effects
 
@@ -273,33 +267,6 @@ defmodule Aspect.Compiler do
     Map.fetch(@builtins, word)
   end
 
-  def parsing_word(word) do
-    Map.fetch(@parsing_words, word)
-  end
-
-  def parse_words(ast, stack, ctx) do
-    parse_words_aux([], ast, stack, ctx)
-  end
-  def parse_words_aux(code, [], stack, ctx) do
-    {code, stack, ctx}
-  end
-  def parse_words_aux(code, ast, stack, ctx) do
-    {code_, ast_, stack_, ctx_} = parse_word(ast, stack, ctx)
-    parse_words_aux(code ++ code_, ast_, stack_, ctx_)
-  end
-
-  def parse_word([word | ast], stack, ctx) do
-    case parsing_word(word) do
-      # TODO handle numbers properly here maybe
-      :error ->
-        {[], ast, [word | stack], ctx}
-
-      {:ok, f} ->
-        f.(ast, stack, ctx)
-    end
-  end
-
-  def parse_word([], [], ctx), do: {[], [], [], ctx}
 
   # TODO compile_forms has to call the lexer directly to get new words
   # this will allow the lexer to call parsing words
