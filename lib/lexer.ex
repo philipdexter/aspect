@@ -67,17 +67,16 @@ defmodule Aspect.Lexer do
     parse_words_aux(code ++ code_, ast_, stack_, ctx_)
   end
 
+  def parse_word([], [], ctx), do: {[], [], [], ctx}
   def parse_word([word | ast], stack, ctx) do
     case parsing_word(word) do
-      # TODO handle numbers properly here maybe
       :error ->
+        # TODO handle numbers properly here maybe
         {[], ast, [word | stack], ctx}
 
       {:ok, f} ->
         f.(ast, stack, ctx)
     end
   end
-
-  def parse_word([], [], ctx), do: {[], [], [], ctx}
 
 end

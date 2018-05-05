@@ -125,7 +125,7 @@ defmodule Aspect.Compiler.Builtins do
   end
 
   def call(ast, [quot | stack], ctx) do
-    {num_args, num_ret, ast_rest} = parse_effect(["(" | ast])
+    {{num_args, num_ret}, ast_rest} = parse_effect(["(" | ast])
 
     {arg_vars, ctxx} = fresh(num_args, ctx)
 
@@ -169,30 +169,48 @@ defmodule Aspect.Compiler.Builtins do
     {[code_], ast_rest, stack_, ctx_}
   end
 
-  def colon([func_name | ast], stack, ctx) do
-    {arg_count, ret_count, ast_body} = parse_effect(ast)
-    {code_, ast_rest, body_r, ctx} = parse_body(ast_body, [], ctx)
-    body = Enum.reverse(body_r)
+  def colon_(ast, stack, ctx) do
+    {func_name, ast} = parse_func_name(ast)
+    {effect, ast} = parse_effect(ast)
+    {code, ast, body_r, ctx} = parse_body(ast, [], ctx)
+    {code, ast, [func_name, effect, Enum.reverse(body_r) | stack], ctx}
+  end
+
+  def define_declared(ast, [name, effect, body | stack], ctx) do
+    # TODO check declared stack effect with def
+    {arg_count, ret_count} = effect
 
     {arg_vars, ctx} = fresh(arg_count, ctx)
-
     {code, stack_rest, ctx} = gen_code(body, arg_vars, ctx)
+    ^ret_count = length(stack_rest)
 
     full_code =
-      code_ ++ code
+      code
       |> ret_stack(stack_rest)
       |> ensure_ret()
 
-    # assert the declared return stack effect is the same
-    # as the number of values left on the stack
-    ^ret_count = length(stack_rest)
+    ctx = define_with_effect(name, arg_count, ret_count, ctx)
 
-    ctx = define_with_effect(func_name, arg_count, ret_count, ctx)
-
-    function = {:function, 5, String.to_atom(func_name), arg_count,
+    function = {:function, 5, String.to_atom(name), arg_count,
                 [{:clause, 5, Enum.map(arg_vars, &var/1), [], full_code}]}
 
-    {[function], ast_rest, stack, ctx}
+    {[function], ast, stack, ctx}
+  end
+
+  def parse_func_name([func_name | ast]) do
+    {func_name, ast}
+  end
+
+  def parse_effect(ast) do
+    {["(" | front], ["--" | rest]} = Enum.split_while(ast, fn x -> x != "--" end)
+    {back, [")" | next]} = Enum.split_while(rest, fn x -> x != ")" end)
+    {{length(front), length(back)}, next}
+  end
+
+  def colon(ast, stack, ctx) do
+    {code, ast, stack, ctx} = colon_(ast, stack, ctx)
+    {code_, ast, stack, ctx} = define_declared(ast, stack, ctx)
+    {code ++ code_, ast, stack, ctx}
   end
 
   defp ret_stack(code, stack_vars) do
@@ -210,31 +228,29 @@ defmodule Aspect.Compiler.Builtins do
     end
   end
 
-  defp parse_body(ast, stack, ctx) do
+  # TODO parse_body and parse_quoation are the same almost
+  # need `parse-until`
+
+  def parse_body(ast, stack, ctx) do
     parse_body_aux([], ast, stack, ctx)
   end
-  defp parse_body_aux(code, ast, stack, ctx) do
+  def parse_body_aux(code, ast, stack, ctx) do
     {code_, ast, stack, ctx} = Aspect.Lexer.parse_word(ast, stack, ctx)
     case stack do
+      [] -> throw(:unexpected_eof)
       [";" | stack] -> {code ++ code_, ast, stack, ctx}
       _ -> parse_body_aux(code ++ code_, ast, stack, ctx)
     end
   end
 
-  defp parse_quotation(ast, stack, ctx) do
+  def parse_quotation(ast, stack, ctx) do
     parse_quotation_aux([], ast, stack, ctx)
   end
-  defp parse_quotation_aux(code, ast, stack, ctx) do
+  def parse_quotation_aux(code, ast, stack, ctx) do
     {code_, ast, stack, ctx} = Aspect.Lexer.parse_word(ast, stack, ctx)
     case stack do
       ["]" | stack] -> {code ++ code_, ast, stack, ctx}
       _ -> parse_quotation_aux(code ++ code_, ast, stack, ctx)
     end
-  end
-
-  defp parse_effect(ast) do
-    {["(" | front], ["--" | rest]} = Enum.split_while(ast, fn x -> x != "--" end)
-    {back, [")" | next]} = Enum.split_while(rest, fn x -> x != ")" end)
-    {length(front), length(back), next}
   end
 end
