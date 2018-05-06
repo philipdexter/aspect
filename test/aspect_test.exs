@@ -48,9 +48,20 @@ defmodule AspectTest do
     load(compile_string("""
     : give2 ( -- x x ) 1 2 ;
     : drop1 ( x y -- x ) drop ;
+    : pass2 ( x y -- x y ) ;
     """))
     assert {2, 1} == :scratchpad.give2()
     assert 1 == :scratchpad.drop1(2, 1)
+    assert {1, 2} == :scratchpad.pass2(1, 2)
+  end
+
+  test "passthrough stack" do
+    load(compile_string("""
+    : and1 ( x -- x 1 ) 1 ;
+    : and2 ( x y -- x y 1 2 ) 1 2 ;
+    """))
+    assert {1, 2} == :scratchpad.and1(2)
+    assert {2, 1, 3, 4} == :scratchpad.and2(3, 4)
   end
 
   test "parse token" do
