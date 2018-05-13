@@ -81,6 +81,18 @@ defmodule Aspect.Compiler.Builtins do
     end
   end
 
+  def cons(ast, [xs, x | stack], ctx) do
+    {[y], ctx} = fresh(1, ctx)
+    code = [match(var(y), {:cons, 1, var(x), var(xs)})]
+    {code, ast, [y | stack], ctx}
+  end
+
+  def empty(ast, stack, ctx) do
+    {[x], ctx} = fresh(1, ctx)
+    code = [match(var(x), {:nil, 1})]
+    {code, ast, [x | stack], ctx}
+  end
+
   def if(ast, [fc, tc, b | stack], ctx) do
     # TODO consider changing this to match on :false
     # and then everything else is considered true

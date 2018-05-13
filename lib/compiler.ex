@@ -24,6 +24,8 @@ defmodule Aspect.Compiler do
     "if" => {&Aspect.Compiler.Builtins.if/3, {3, 1}},
     "call(" => {&Aspect.Compiler.Builtins.call/3, {0, 0}},
     "infer" => {&Aspect.Compiler.Builtins.infer/3, {1, 1}},
+    "|" => {&Aspect.Compiler.Builtins.cons/3, {2,1}},
+    "empty" => {&Aspect.Compiler.Builtins.empty/3, {0,1}},
   }
 
   defmodule Ctx do
@@ -208,7 +210,10 @@ defmodule Aspect.Compiler do
                       true -> :atom
                       false -> case String.contains?(word, "/") do
                                  true -> :call_setup
-                                 false -> :func_call
+                                 false -> case String.starts_with?(word, "'") do
+                                            true -> :charlist
+                                            false -> :func_call
+                                          end
                                end
                     end
           _ -> :number
@@ -294,6 +299,15 @@ defmodule Aspect.Compiler do
       :number ->
         {[x], ctxx} = fresh(1, ctx)
         {[match(var(x), {:integer, 1, String.to_integer(word)})], ast, [x | stack], ctxx}
+      :charlist ->
+        # TODO
+        # fix string handling, should do something in the parser which
+        # when i sees ' (or "?) it parses until the closing one and treats
+        # that as a word
+        # TODO
+        # charlist vs string? if we return a charlist here then the parser pukes
+        {[x], ctxx} = fresh(1, ctx)
+        {[match(var(x), {:string, 1, String.trim(word, "'")})], ast, [x | stack], ctxx}
     end
   end
 
