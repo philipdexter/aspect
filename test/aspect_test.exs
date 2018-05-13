@@ -155,4 +155,19 @@ defmodule AspectTest do
     assert {3, 1} == :scratchpad.d()
     assert {2, 1} == :scratchpad.f()
   end
+
+  test "empty and cons" do
+    load(compile_string("""
+    : a ( -- x ) empty ;
+    : b ( -- x ) 1 empty | ;
+    : c ( -- x ) empty 1 swap | ;
+    : d ( -- x ) 1 2 3 empty | | | ;
+    """))
+    assert [] == :scratchpad.a()
+    assert [1] == :scratchpad.b()
+    assert [1] == :scratchpad.c()
+    assert [1,2,3] == :scratchpad.d()
+  end
+
+  # TODO tests for syntax
 end
