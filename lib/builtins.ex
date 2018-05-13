@@ -176,7 +176,7 @@ defmodule Aspect.Compiler.Builtins do
     {code, ast, [func_name, effect, Enum.reverse(body_r) | stack], ctx}
   end
 
-  def define_declared(ast, [name, effect, body | stack], ctx) do
+  def define_declared(ast, [name, effect, body | stack], ctx, register \\ true) do
     # TODO check declared stack effect with def
     {arg_count, ret_count} = effect
 
@@ -189,7 +189,11 @@ defmodule Aspect.Compiler.Builtins do
       |> ret_stack(stack_rest)
       |> ensure_ret()
 
-    ctx = define_with_effect(name, arg_count, ret_count, ctx)
+    ctx =
+      case register do
+        true -> define_with_effect(name, arg_count, ret_count, ctx)
+        false -> ctx
+      end
 
     function = {:function, 5, String.to_atom(name), arg_count,
                 [{:clause, 5, Enum.map(arg_vars, &var/1), [], full_code}]}
@@ -226,6 +230,41 @@ defmodule Aspect.Compiler.Builtins do
       [] -> [{:atom, 1, :ok}]
       _ -> code
     end
+  end
+
+  def dep(ast, stack, ctx) do
+    {code, ast, [module | stack], ctx} = Aspect.Lexer.parse_word(ast, stack, ctx)
+
+    mod_atom = String.to_atom(module)
+
+    :code.load_file(mod_atom)
+
+    syntax = :proplists.get_value(:syntax, mod_atom.module_info(:attributes))
+
+    ctx = add_parsing_words(syntax, mod_atom, ctx)
+
+    # TODO need way to add parsing words!!!
+    # and eventually macros
+
+    {code, ast, stack, ctx}
+  end
+
+  def syntax(ast, stack, ctx) do
+    {name, ast} = parse_func_name(ast)
+    {code, ast, body_r, ctx} = parse_body(ast, [], ctx)
+
+    # TODO parsing words maybe shouldn't return code?
+    # this would require us to change how
+    # define_declared works
+    # it should just add something to ctx which then
+    # generates the actual code later
+    syntax_effect = {3, 4} # ( ctx stack ast -- ctx stack ast code )
+
+    {code_, ast, stack, ctx} = define_declared(ast, [name, syntax_effect, Enum.reverse(body_r) | stack], ctx, false)
+
+    ctx = define_syntax(name, ctx)
+
+    {code ++ code_, ast, stack, ctx}
   end
 
   # TODO parse_body and parse_quoation are the same almost

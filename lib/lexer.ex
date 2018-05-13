@@ -1,12 +1,6 @@
 defmodule Aspect.Lexer do
   alias Aspect.Lexer, as: Lexer
 
-  @parsing_words %{
-    ":" => &Aspect.Compiler.Builtins.colon/3,
-    "M:" => &Aspect.Compiler.Builtins.set_module/3,
-    "parse-token" => &Aspect.Compiler.Builtins.parse_token/3,
-  }
-
   @opaque t :: %Lexer{}
 
   defstruct [:words]
@@ -52,8 +46,8 @@ defmodule Aspect.Lexer do
     %Lexer{words: words}
   end
 
-  def parsing_word(word) do
-    Map.fetch(@parsing_words, word)
+  def parsing_word(word, ctx) do
+    Map.fetch(ctx.parsing_words, word)
   end
 
   def parse_words(ast, stack, ctx) do
@@ -69,13 +63,15 @@ defmodule Aspect.Lexer do
 
   def parse_word([], [], ctx), do: {[], [], [], ctx}
   def parse_word([word | ast], stack, ctx) do
-    case parsing_word(word) do
+    case parsing_word(word, ctx) do
       :error ->
         # TODO handle numbers properly here maybe
         {[], ast, [word | stack], ctx}
 
       {:ok, f} ->
-        f.(ast, stack, ctx)
+        {code, ast, stack, ctx} = f.(ast, stack, ctx)
+        {code_, ast, stack, ctx} = parse_word(ast, stack, ctx)
+        {code ++ code_, ast, stack, ctx}
     end
   end
 

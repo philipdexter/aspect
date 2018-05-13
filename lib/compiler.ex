@@ -26,10 +26,15 @@ defmodule Aspect.Compiler do
     "infer" => {&Aspect.Compiler.Builtins.infer/3, {1, 1}},
   }
 
-  # TODO test empty function definition
-
   defmodule Ctx do
-    defstruct fresh: 0, words: %{}, module_name: "scratchpad"
+    defstruct fresh: 0, words: %{}, syntax: MapSet.new(), module_name: "scratchpad",
+      parsing_words: %{
+        ":" => &Aspect.Compiler.Builtins.colon/3,
+        "M:" => &Aspect.Compiler.Builtins.set_module/3,
+        "SYNTAX:" => &Aspect.Compiler.Builtins.syntax/3,
+        "parse-token" => &Aspect.Compiler.Builtins.parse_token/3,
+        "DEP:" => &Aspect.Compiler.Builtins.dep/3,
+      }
   end
 
   defmodule AST do
@@ -82,6 +87,23 @@ defmodule Aspect.Compiler do
     end
   end
 
+  def to_file(forms) do
+    case :compile.forms(forms, [:return_errors, :return_warnings]) do
+      {:ok, mod, binary, _warnings} ->
+        {:ok, file} = File.open(Atom.to_string(mod) <> ".beam", [:write])
+        :ok = IO.binwrite(file, binary)
+        :ok = File.close(file)
+    end
+  end
+
+  def cs(file) do
+    to_file(compile(file))
+  end
+
+  def css(string) do
+    to_file(compile_string(string))
+  end
+
   def cl(file) do
     load(compile(file))
   end
@@ -98,6 +120,16 @@ defmodule Aspect.Compiler do
     %Ctx{ctx | words: Map.put(words, function_name, {num_args, num_ret})}
   end
 
+  def add_parsing_words(syntax_atom_list, mod_atom, %Ctx{parsing_words: parsing_words} = ctx) do
+    %Ctx{ctx | parsing_words: List.foldl(syntax_atom_list, parsing_words, fn s, map ->
+            Map.put(map, Atom.to_string(s), fn a, b, c -> apply(mod_atom, s, [a, b, c]) end)
+          end)}
+  end
+
+  def define_syntax(name, %Ctx{syntax: syntax} = ctx) do
+    %Ctx{ctx | syntax: MapSet.put(syntax, name)}
+  end
+
   @spec to_eaf(Aspect.Lexer.t()) :: [tuple()]
   def to_eaf(lexer) do
     Aspect.Lexer.remaining_words(lexer)
@@ -110,7 +142,9 @@ defmodule Aspect.Compiler do
     [
       {:attribute, 1, :file, {'hi.as', 1}},
       {:attribute, 1, :module, String.to_atom(ctx.module_name)},
-      {:attribute, 2, :compile, :export_all}
+      {:attribute, 2, :compile, :export_all},
+      {:attribute, 3, :words, Enum.map(ctx.words, fn ({word, _}) -> String.to_atom(word) end)},
+      {:attribute, 3, :syntax, Enum.map(ctx.syntax, fn (word) -> String.to_atom(word) end)},
     ] ++ code ++ [{:eof, 7}]
   end
 
@@ -271,6 +305,8 @@ defmodule Aspect.Compiler do
   # TODO compile_forms has to call the lexer directly to get new words
   # this will allow the lexer to call parsing words
   # because right now compile_forms bypasses the lexer
+
+
 
   # TODO macros?
 
