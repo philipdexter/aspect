@@ -249,7 +249,9 @@ defmodule Aspect.Compiler.Builtins do
 
     mod_atom = String.to_atom(module)
 
-    :code.load_file(mod_atom)
+    unless :code.is_loaded(mod_atom) do
+      :code.load_file(mod_atom)
+    end
 
     syntax = :proplists.get_value(:syntax, mod_atom.module_info(:attributes))
 
