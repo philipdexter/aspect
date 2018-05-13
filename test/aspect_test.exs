@@ -6,10 +6,14 @@ defmodule AspectTest do
 
   import Aspect.Compiler
 
+  def unload(module) do
+    :code.purge(module)
+    :code.delete(module)
+  end
+
   setup do
     on_exit fn ->
-      :code.purge(:scratchpad)
-      :code.delete(:scratchpad)
+      unload(:scratchpad)
     end
   end
 
@@ -167,6 +171,17 @@ defmodule AspectTest do
     assert [1] == :scratchpad.b()
     assert [1] == :scratchpad.c()
     assert [1,2,3] == :scratchpad.d()
+  end
+
+  test "syntax" do
+    load(compile_string("""
+    M: syntax SYNTAX: test '1' swap | empty ;
+    """))
+    load(compile_string("""
+    DEP: syntax : test ( -- x ) test ;
+    """))
+    assert 1 == :scratchpad.test()
+    unload(:syntax)
   end
 
   # TODO tests for syntax
