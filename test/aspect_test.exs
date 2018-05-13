@@ -180,9 +180,7 @@ defmodule AspectTest do
     load(compile_string("""
     DEP: syntax : test ( -- x ) test ;
     """))
-    assert 1 == :scratchpad.test()
     unload(:syntax)
+    assert 1 == :scratchpad.test()
   end
-
-  # TODO tests for syntax
 end
