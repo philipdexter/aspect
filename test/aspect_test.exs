@@ -175,12 +175,45 @@ defmodule AspectTest do
 
   test "syntax" do
     load(compile_string("""
-    M: syntax SYNTAX: test '1' swap | empty ;
+    M: syntax SYNTAX: hi '1' swap | empty ;
     """))
     load(compile_string("""
-    DEP: syntax : test ( -- x ) test ;
+    DEP: syntax : test ( -- x ) hi ;
     """))
     unload(:syntax)
     assert 1 == :scratchpad.test()
+  end
+
+  test "macro" do
+    load(compile_string("""
+    M: macros MACRO: hi ( -- x ) '1' empty | ;
+    """))
+    load(compile_string("""
+    DEP: macros : test ( -- x ) hi ;
+    """))
+    unload(:macros)
+    assert 1 == :scratchpad.test()
+  end
+
+  test "macro 2" do
+    load(compile_string("""
+    M: macros MACRO: hi ( x y -- x ) drop empty | ;
+    """))
+    load(compile_string("""
+    DEP: macros : test ( -- x ) 1 2 hi ;
+    """))
+    unload(:macros)
+    assert 1 == :scratchpad.test()
+  end
+
+  test "macro 3" do
+    load(compile_string("""
+    M: macros MACRO: hi ( x y -- x ) empty | | ;
+    """))
+    load(compile_string("""
+    DEP: macros : test ( -- x y ) 1 2 hi ;
+    """))
+    unload(:macros)
+    assert {2, 1} == :scratchpad.test()
   end
 end

@@ -103,6 +103,8 @@ defmodule Aspect.Compiler.Builtins do
 
     # TODO assuming the branches all return one arg, bad!!!
 
+    # TODO if probably shouldn't have to worry about
+    # generating code
     {tc_code, tc_ret_args, ctxx} = gen_code(tc, [], ctx)
     {fc_code, fc_ret_args, ctxxx} = gen_code(fc, [], ctxx)
 
@@ -143,6 +145,8 @@ defmodule Aspect.Compiler.Builtins do
 
     {args_for_call, stack_rest} = Enum.split(stack, num_args)
 
+    # TODO call probably shouldn't have to worry
+    # about generating code
     {code, ret_args, ctxxx} = gen_code(quot, arg_vars, ctxx)
 
     full_code =
@@ -254,11 +258,10 @@ defmodule Aspect.Compiler.Builtins do
     end
 
     syntax = :proplists.get_value(:syntax, mod_atom.module_info(:attributes))
-
     ctx = add_parsing_words(syntax, mod_atom, ctx)
 
-    # TODO need way to add parsing words!!!
-    # and eventually macros
+    macros = :proplists.get_value(:macros, mod_atom.module_info(:attributes))
+    ctx = add_macros(macros, mod_atom, ctx)
 
     {code, ast, stack, ctx}
   end
@@ -277,6 +280,20 @@ defmodule Aspect.Compiler.Builtins do
     {code_, ast, stack, ctx} = define_declared(ast, [name, syntax_effect, Enum.reverse(body_r) | stack], ctx, false)
 
     ctx = define_syntax(name, ctx)
+
+    {code ++ code_, ast, stack, ctx}
+  end
+
+  def macro(ast, stack, ctx) do
+    {name, ast} = parse_func_name(ast)
+    {effect, ast} = parse_effect(ast)
+    {code, ast, body_r, ctx} = parse_body(ast, [], ctx)
+
+    {args, 1} = effect
+
+    {code_, ast, stack, ctx} = define_declared(ast, [name, effect, Enum.reverse(body_r) | stack], ctx, false)
+
+    ctx = define_macro(name, args, ctx)
 
     {code ++ code_, ast, stack, ctx}
   end

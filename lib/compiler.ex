@@ -29,14 +29,16 @@ defmodule Aspect.Compiler do
   }
 
   defmodule Ctx do
-    defstruct fresh: 0, words: %{}, syntax: MapSet.new(), module_name: "scratchpad",
+    defstruct fresh: 0, words: %{}, syntax: MapSet.new(), macros: MapSet.new(), module_name: "scratchpad",
       parsing_words: %{
         ":" => &Aspect.Compiler.Builtins.colon/3,
         "M:" => &Aspect.Compiler.Builtins.set_module/3,
         "SYNTAX:" => &Aspect.Compiler.Builtins.syntax/3,
+        "MACRO:" => &Aspect.Compiler.Builtins.macro/3,
         "parse-token" => &Aspect.Compiler.Builtins.parse_token/3,
         "DEP:" => &Aspect.Compiler.Builtins.dep/3,
-      }
+      },
+      macro_words: %{}
   end
 
   defmodule AST do
@@ -128,8 +130,18 @@ defmodule Aspect.Compiler do
           end)}
   end
 
+  def add_macros(macros_atom_list, mod_atom, %Ctx{macro_words: macro_words} = ctx) do
+    %Ctx{ctx | macro_words: List.foldl(macros_atom_list, macro_words, fn {s, args}, map ->
+            Map.put(map, Atom.to_string(s), {mod_atom, s, args})
+          end)}
+  end
+
   def define_syntax(name, %Ctx{syntax: syntax} = ctx) do
     %Ctx{ctx | syntax: MapSet.put(syntax, name)}
+  end
+
+  def define_macro(name, args, %Ctx{macros: macros} = ctx) do
+    %Ctx{ctx | macros: MapSet.put(macros, {name, args})}
   end
 
   @spec to_eaf(Aspect.Lexer.t()) :: [tuple()]
@@ -147,6 +159,7 @@ defmodule Aspect.Compiler do
       {:attribute, 2, :compile, :export_all},
       {:attribute, 3, :words, Enum.map(ctx.words, fn ({word, _}) -> String.to_atom(word) end)},
       {:attribute, 3, :syntax, Enum.map(ctx.syntax, fn (word) -> String.to_atom(word) end)},
+      {:attribute, 3, :macros, Enum.map(ctx.macros, fn ({word, args}) -> {String.to_atom(word), args} end)},
     ] ++ code ++ [{:eof, 7}]
   end
 
@@ -315,18 +328,9 @@ defmodule Aspect.Compiler do
     Map.fetch(@builtins, word)
   end
 
-
-  # TODO compile_forms has to call the lexer directly to get new words
-  # this will allow the lexer to call parsing words
-  # because right now compile_forms bypasses the lexer
-
-
-
-  # TODO macros?
-
   @spec gen_code(AST.t(), stack, %Ctx{}) :: {[tuple()], stack, %Ctx{}}
   def gen_code(ast, stack, ctx) do
-    gen_code_aux([], ast, stack, ctx)
+    gen_code_aux([], expand_macros(ast, ctx), stack, ctx)
   end
   def gen_code_aux(code, [], stack, ctx) do
     {code, stack, ctx}
@@ -336,8 +340,29 @@ defmodule Aspect.Compiler do
     gen_code_aux(code ++ code_, ast_, stack_, ctx_)
   end
 
-  @spec compile_forms(AST.t(), stack, %Ctx{}) :: {[tuple()], AST.t(), stack, %Ctx{}}
+  # TODO if quots become own item on stack, need to recurse into them
 
+  def expand_macros(ast, ctx), do: expand_macros_aux([], ast, ctx)
+
+  def expand_macros_aux(l, [], _), do: Enum.reverse(l)
+  def expand_macros_aux(l, [x | ast], %Ctx{macro_words: macro_words} = ctx) do
+    case Map.get(macro_words, x) do
+      nil ->
+        expand_macros_aux([x | l], ast, ctx)
+      spec ->
+        {new_l, added} = expand_macro(l, spec)
+        expand_macros_aux(new_l, added ++ ast, ctx)
+    end
+  end
+
+  def expand_macro(l, {mod_atom, f, arg_count}) do
+    {args, rest} = Enum.split(l, arg_count)
+    # TODO no really a quote, just an array of words
+    quot = apply(mod_atom, f, args)
+    {rest, quot}
+  end
+
+  @spec compile_forms(AST.t(), stack, %Ctx{}) :: {[tuple()], AST.t(), stack, %Ctx{}}
   def compile_forms([x | ast], stack, ctx) do
     compile_word(x, ast, stack, ctx)
   end
