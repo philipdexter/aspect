@@ -132,16 +132,27 @@ defmodule AspectTest do
     assert {4, 3} == :scratchpad.hello()
   end
 
+  test "return quot" do
+    load(compile_string("""
+    : quot1 ( -- x ) [ 1 + ] ;
+    : quot2 ( -- x ) [ - ] ;
+    """))
+    assert 5 == :scratchpad.quot1().(4)
+    assert 1 == :scratchpad.quot1().(3, 2)
+  end
+
   test "if" do
     load(compile_string("""
     : true ( -- x ) :true [ 1 ] [ 2 ] if ;
     : false ( -- x ) :false [ 1 ] [ 2 ] if ;
     : check ( x -- y ) [ 1 ] [ 2 ] if ;
+    : quot ( -- x ) :true [ [ 1 ] ] [ [ 2 ] ] if ;
     """))
     assert 1 == :scratchpad.true()
     assert 2 == :scratchpad.false()
     assert 1 == :scratchpad.check(:true)
     assert 2 == :scratchpad.check(:false)
+    assert 1 == :scratchpad.quot().()
   end
 
   test "infer" do
@@ -152,12 +163,16 @@ defmodule AspectTest do
     : d ( -- x ) [ + + ] infer ;
     : e ( -- x ) [ 1 + 2 + ] infer ;
     : f ( -- x ) [ + 2 + ] infer ;
+    : g ( -- x ) [ [ 1 2 + ] ] infer ;
+    : h ( -- x ) [ 1 [ 1 2 + ] ] infer ;
     """))
     assert {0, 1} == :scratchpad.a()
     assert {0, 1} == :scratchpad.b()
     assert {0, 2} == :scratchpad.c()
     assert {3, 1} == :scratchpad.d()
     assert {2, 1} == :scratchpad.f()
+    assert {0, 1} == :scratchpad.g()
+    assert {0, 2} == :scratchpad.h()
   end
 
   test "empty and cons" do

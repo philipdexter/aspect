@@ -65,6 +65,7 @@ defmodule Aspect.Compiler.Builtins do
 
   def infer_stack_effect_single(word, ctx) do
     case Aspect.Compiler.word_type(word) do
+      :quot -> {0, 1}
       :builtin ->
         {:ok, {_, effect}} = Aspect.Compiler.builtin(word)
         effect
@@ -112,13 +113,13 @@ defmodule Aspect.Compiler.Builtins do
     1 = length(fc_ret_args)
 
     tc_full_code =
-    [{:call, 1,
-      {:fun, 1, {:clauses, [{:clause, 1, [], [],
-                             case tc_ret_args do
-                               [] -> tc_code
-                               [v] -> tc_code ++ [var(v)]
-                               s -> tc_code ++ [tuple(Enum.map(s, &var/1))]
-                             end}]}}, []}]
+      [{:call, 1,
+        {:fun, 1, {:clauses, [{:clause, 1, [], [],
+                               case tc_ret_args do
+                                 [] -> tc_code
+                                 [v] -> tc_code ++ [var(v)]
+                                 s -> tc_code ++ [tuple(Enum.map(s, &var/1))]
+                               end}]}}, []}]
 
     fc_full_code =
       [{:call, 1,
@@ -129,25 +130,26 @@ defmodule Aspect.Compiler.Builtins do
                                  s -> fc_code ++ [tuple(Enum.map(s, &var/1))]
                                end}]}}, []}]
 
-    {[ret_var], ctxxxx} = fresh(1, ctxxx)
+    {[ret_var], ctx} = fresh(1, ctx)
 
+    # TODO just match on false, and everything else is true?
     code =
       match(var(ret_var),
         {:case, 1, var(b), [{:clause, 1, [{:atom, 1, :true}], [], tc_full_code},
                             {:clause, 1, [{:atom, 1, :false}], [], fc_full_code}]})
-    {[code], ast, [ret_var | stack], ctxxxx}
+    {[code], ast, [ret_var | stack], ctx}
   end
 
   def call(ast, [quot | stack], ctx) do
     {{num_args, num_ret}, ast_rest} = parse_effect(["(" | ast])
 
-    {arg_vars, ctxx} = fresh(num_args, ctx)
+    {arg_vars, ctx} = fresh(num_args, ctx)
 
     {args_for_call, stack_rest} = Enum.split(stack, num_args)
 
     # TODO call probably shouldn't have to worry
     # about generating code
-    {code, ret_args, ctxxx} = gen_code(quot, arg_vars, ctxx)
+    {code, ret_args, ctx} = gen_code(quot, arg_vars, ctx)
 
     full_code =
       case ret_args do
@@ -160,29 +162,26 @@ defmodule Aspect.Compiler.Builtins do
     # as the number of values left on the stack
     ^num_ret = length(ret_args)
 
-    # todo quots that return more than 1
-    # todo can look at the effect of the called quot
-    # for now let's assume it returns either 0 or 1 val
     call =
       {:call, 12,
        {:fun, 12, {:clauses, [{:clause, 12, Enum.map(arg_vars, &var/1), [], full_code}]}},
        Enum.map(args_for_call, &var/1)}
 
-    {code_, stack_, ctx_} =
+    {code_, stack_, ctx} =
       case ret_args do
         [] ->
-          {call, stack_rest, ctxxx}
+          {call, stack_rest, ctx}
 
         [_] ->
-          {[v], c} = fresh(1, ctxxx)
+          {[v], c} = fresh(1, ctx)
           {match(var(v), call), [v | stack_rest], c}
 
         _ ->
-          {vs, c} = fresh(length(ret_args), ctxxx)
+          {vs, c} = fresh(length(ret_args), ctx)
           {match(tuple(Enum.map(vs, &var/1)), call), vs ++ stack_rest, c}
       end
 
-    {[code_], ast_rest, stack_, ctx_}
+    {[code_], ast_rest, stack_, ctx}
   end
 
   def colon_(ast, stack, ctx) do

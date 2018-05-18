@@ -9,18 +9,13 @@
 
 defmodule Aspect.Compiler do
   @builtins %{
-    # TODO these stack effects are hacks, especially for : and call(
-    # need to figure out how to compute stack effects
-    # as the parsing goes
-    # need to plan how we put stuff on the stack while parsing
-    # and put the stack effect there
+    # TODO these stack effects are hacks, especially for call(
     "+" => {&Aspect.Compiler.Builtins.plus/3, {2, 1}},
     "-" => {&Aspect.Compiler.Builtins.minus/3, {2, 1}},
     "swap" => {&Aspect.Compiler.Builtins.swap/3, {2, 2}},
     "dup" => {&Aspect.Compiler.Builtins.dup/3, {1, 2}},
     "drop" => {&Aspect.Compiler.Builtins.drop/3, {1, 0}},
     "." => {&Aspect.Compiler.Builtins.pp/3, {1, 0}},
-    "[" => {&Aspect.Compiler.Builtins.quot/3, {0, 0}},
     "if" => {&Aspect.Compiler.Builtins.if/3, {3, 1}},
     "call(" => {&Aspect.Compiler.Builtins.call/3, {0, 0}},
     "infer" => {&Aspect.Compiler.Builtins.infer/3, {1, 1}},
@@ -37,6 +32,7 @@ defmodule Aspect.Compiler do
         "MACRO:" => &Aspect.Compiler.Builtins.macro/3,
         "parse-token" => &Aspect.Compiler.Builtins.parse_token/3,
         "DEP:" => &Aspect.Compiler.Builtins.dep/3,
+        "[" => &Aspect.Compiler.Builtins.quot/3,
       },
       macro_words: %{}
   end
@@ -208,80 +204,102 @@ defmodule Aspect.Compiler do
 
   @spec word_type(String.t()) :: :atom | :call_setup | :func_call | :number | :builtin
   def word_type(word) do
-    case builtin(word) do
-      {:ok, _} -> :builtin
-      _ ->
-        num? =
-          try do
-            String.to_integer(word)
-          rescue
-            ArgumentError -> :error
-          end
+    # if it's a list, it must (maybe? hopefully) be a quotation
+    case is_list(word) do
+      true -> :quot
+      false ->
+        case builtin(word) do
+          {:ok, _} -> :builtin
+          _ ->
+            num? =
+              try do
+                String.to_integer(word)
+              rescue
+                ArgumentError -> :error
+              end
 
-        case num? do
-          :error -> case String.starts_with?(word, ":") do
-                      true -> :atom
-                      false -> case String.contains?(word, "/") do
-                                 true -> :call_setup
-                                 false -> case String.starts_with?(word, "'") do
-                                            true -> :charlist
-                                            false -> :func_call
-                                          end
-                               end
-                    end
-          _ -> :number
+            case num? do
+              :error -> case String.starts_with?(word, ":") do
+                          true -> :atom
+                          false -> case String.contains?(word, "/") do
+                                     true -> :call_setup
+                                     false -> case String.starts_with?(word, "'") do
+                                                true -> :charlist
+                                                false -> :func_call
+                                              end
+                                   end
+                        end
+              _ -> :number
+            end
         end
     end
   end
 
+  def quot_to_eaf([]), do: {:nil, 1}
+  def quot_to_eaf([x | xs]), do: {:cons, 1, quot_to_eaf_single(x), quot_to_eaf(xs)}
+  def quot_to_eaf_single(x), do: {:bin, 1, [{:bin_elelment, 1, {:string, 1, String.to_charlist(x)}, :default, :default}]}
+
+  def eaf_to_quot({:nil, _}), do: []
+  def eaf_to_quot({:cons, _, x, xs}), do: [eaf_to_quot_single(x) | eaf_to_quot(xs)]
+  def eaf_to_quot_single({:bin, _, [{:bin_elelment, _, {:string, _, x}, :default, :default}]}), do: :erlang.list_to_binary(x)
+
   def compile_word(word, ast, stack, ctx) do
     case word_type(word) do
-          :builtin ->
-            {:ok, {w, _}} = builtin(word)
-            w.(ast, stack, ctx)
-          :atom ->
-                {[x], ctxx} = fresh(1, ctx)
-                {[match(var(x), {:atom, 1, String.to_atom(String.slice(word, 1..-1))})], ast, [x | stack], ctxx}
-          :call_setup ->
-            # call setup
-            [arg_count, return_count] =
-              word
-              |> String.split("/")
-              |> Enum.map(&elem(Integer.parse(&1), 0))
+      :quot ->
+        # TODO need some way to return quots
+        # maybe put tagged stuff onto stack
+        # e.g., {:number, 3}
+        #       {:var,    :X0}
+        #       {:quot,   {:cons, blah}}
+        # that way we can react differently and don't have to match everything
+        # to vars
+        {[], ast, [word | stack], ctx}
+      :builtin ->
+        {:ok, {w, _}} = builtin(word)
+        w.(ast, stack, ctx)
+      :atom ->
+        {[x], ctxx} = fresh(1, ctx)
+        {[match(var(x), {:atom, 1, String.to_atom(String.slice(word, 1..-1))})], ast, [x | stack], ctxx}
+      :call_setup ->
+        # call setup
+        [arg_count, return_count] =
+          word
+          |> String.split("/")
+          |> Enum.map(&elem(Integer.parse(&1), 0))
 
-            [func | ast_next] = ast
-            # TODO maybe borrow from elixir, use dot and somehow
-            # distinguish beween elixir, erlang, and aspect calls
-            [m, f] = String.split(func, ":")
-            {args, stack_next} = Enum.split(stack, arg_count)
-            ^arg_count = length(args)
+        [func | ast_next] = ast
+        # TODO maybe borrow from elixir, use dot and somehow
+        # distinguish beween elixir, erlang, and aspect calls
+        [m, f] = String.split(func, ":")
+        {args, stack_next} = Enum.split(stack, arg_count)
+        ^arg_count = length(args)
 
-            case return_count do
-              0 ->
-                {[
-                  mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
-                ], ast_next, stack_next, ctx}
+        case return_count do
+          0 ->
+            {[
+              mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
+            ], ast_next, stack_next, ctx}
 
-              1 ->
-                {[x], ctxx} = fresh(1, ctx)
+          1 ->
+            {[x], ctxx} = fresh(1, ctx)
 
-                {[
-                  match(
-                    var(x),
-                    mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
-                  )
-                ], ast_next, [x | stack_next], ctxx}
+            {[
+              match(
+                var(x),
+                mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
+              )
+            ], ast_next, [x | stack_next], ctxx}
 
-              _ ->
-                {xs, ctxx} = fresh(return_count, ctx)
+          _ ->
+            {xs, ctxx} = fresh(return_count, ctx)
 
-                {[
-                  match(
-                    tuple(Enum.map(xs, &var/1)),
-                    mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
-                  )
-                ], ast_next, xs ++ stack_next, ctxx}
-            end
+            {[
+              match(
+                tuple(Enum.map(xs, &var/1)),
+                mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
+              )
+            ], ast_next, xs ++ stack_next, ctxx}
+        end
       :func_call ->
         case Map.get(ctx.words, word) do
           nil ->
