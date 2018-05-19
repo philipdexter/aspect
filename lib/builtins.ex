@@ -3,12 +3,12 @@ defmodule Aspect.Compiler.Builtins do
 
   def plus(ast, [a, b | stack], ctx) do
     {[x], ctxx} = fresh(1, ctx)
-    {[match(var(x), {:op, 6, :+, var(b), var(a)})], ast, [x | stack], ctxx}
+    {[match(var(x), {:op, 6, :+, varize(b), varize(a)})], ast, [x | stack], ctxx}
   end
 
   def minus(ast, [a, b | stack], ctx) do
     {[x], ctxx} = fresh(1, ctx)
-    {[match(var(x), {:op, 6, :-, var(b), var(a)})], ast, [x | stack], ctxx}
+    {[match(var(x), {:op, 6, :-, varize(b), varize(a)})], ast, [x | stack], ctxx}
   end
 
   def swap(ast, [a, b | stack], ctx) do
@@ -35,7 +35,7 @@ defmodule Aspect.Compiler.Builtins do
     {[
        mfa_call(:io, :format, [
          {:string, 15, [126, 112, 126, 110]},
-         {:cons, 15, var(x), {nil, 15}}
+         {:cons, 15, varize(x), {nil, 15}}
        ])
      ], ast, stack, ctx}
   end
@@ -96,7 +96,7 @@ defmodule Aspect.Compiler.Builtins do
 
   def cons(ast, [xs, x | stack], ctx) do
     {[y], ctx} = fresh(1, ctx)
-    code = [match(var(y), {:cons, 1, var(x), var(xs)})]
+    code = [match(varize(y), {:cons, 1, varize(x), varize(xs)})]
     {code, ast, [y | stack], ctx}
   end
 
@@ -118,8 +118,8 @@ defmodule Aspect.Compiler.Builtins do
 
     # TODO if probably shouldn't have to worry about
     # generating code
-    {tc_code, tc_ret_args, ctxx} = gen_code(tc, [], ctx)
-    {fc_code, fc_ret_args, ctxxx} = gen_code(fc, [], ctxx)
+    {tc_code, tc_ret_args, ctx} = gen_code(tc, [], ctx)
+    {fc_code, fc_ret_args, ctx} = gen_code(fc, [], ctx)
 
     1 = length(tc_ret_args)
     1 = length(fc_ret_args)
@@ -132,8 +132,8 @@ defmodule Aspect.Compiler.Builtins do
            {:clause, 1, [], [],
             case tc_ret_args do
               [] -> tc_code
-              [v] -> tc_code ++ [var(v)]
-              s -> tc_code ++ [tuple(Enum.map(s, &var/1))]
+              [v] -> tc_code ++ [varize(v)]
+              s -> tc_code ++ [tuple(Enum.map(s, &varize/1))]
             end}
          ]}}, []}
     ]
@@ -146,8 +146,8 @@ defmodule Aspect.Compiler.Builtins do
            {:clause, 1, [], [],
             case fc_ret_args do
               [] -> fc_code
-              [v] -> fc_code ++ [var(v)]
-              s -> fc_code ++ [tuple(Enum.map(s, &var/1))]
+              [v] -> fc_code ++ [varize(v)]
+              s -> fc_code ++ [tuple(Enum.map(s, &varize/1))]
             end}
          ]}}, []}
     ]
@@ -182,8 +182,8 @@ defmodule Aspect.Compiler.Builtins do
     full_code =
       case ret_args do
         [] -> code
-        [v] -> code ++ [var(v)]
-        s -> code ++ [tuple(Enum.map(s, &var/1))]
+        [v] -> code ++ [varize(v)]
+        s -> code ++ [tuple(Enum.map(s, &varize/1))]
       end
 
     # assert the declared return stack effect is the same
@@ -261,11 +261,14 @@ defmodule Aspect.Compiler.Builtins do
     {code ++ code_, ast, stack, ctx}
   end
 
-  defp ret_stack(code, stack_vars) do
-    case stack_vars do
+  def varize(x) when is_atom(x), do: var(x)
+  def varize(x), do: x
+
+  defp ret_stack(code, stack) do
+    case stack do
       [] -> code
-      [x] -> code ++ [var(x)]
-      _ -> code ++ [tuple(Enum.map(stack_vars, &var/1))]
+      [x] -> code ++ [varize(x)]
+      _ -> code ++ [tuple(Enum.map(stack, &varize/1))]
     end
   end
 

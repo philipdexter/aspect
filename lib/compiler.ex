@@ -273,6 +273,9 @@ defmodule Aspect.Compiler do
   def eaf_to_quot_single({:bin, _, [{:bin_elelment, _, {:string, _, x}, :default, :default}]}),
     do: :erlang.list_to_binary(x)
 
+  ## TODO!!! vars should be pushed on the stack as vars
+  ## so we don't need varize function in builtins
+
   def compile_word(word, ast, stack, ctx) do
     case word_type(word) do
       :quot ->
@@ -365,8 +368,8 @@ defmodule Aspect.Compiler do
         end
 
       :number ->
-        {[x], ctxx} = fresh(1, ctx)
-        {[match(var(x), {:integer, 1, String.to_integer(word)})], ast, [x | stack], ctxx}
+        x = {:integer, 1, String.to_integer(word)}
+        {[], ast, [x | stack], ctx}
 
       :charlist ->
         # TODO
