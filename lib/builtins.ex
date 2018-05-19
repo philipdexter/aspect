@@ -168,6 +168,11 @@ defmodule Aspect.Compiler.Builtins do
     {[code], ast, [ret_var | stack], ctx}
   end
 
+  def pure_call(quot) when is_list(quot) do
+    quot
+  end
+  def pure_call(_, [x | _], _), do: throw({:not_a_quot, x})
+
   def call(ast, [quot | stack], ctx) do
     {{num_args, num_ret}, ast_rest} = parse_effect(["(" | ast])
 

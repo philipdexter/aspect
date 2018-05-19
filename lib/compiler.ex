@@ -40,7 +40,9 @@ defmodule Aspect.Compiler do
                 "DEP:" => &Aspect.Compiler.Builtins.dep/3,
                 "[" => &Aspect.Compiler.Builtins.quot/3
               },
-              macro_words: %{}
+              macro_words: %{
+                "call" => {Aspect.Compiler.Builtins, :pure_call, 1}
+              }
   end
 
   defmodule AST do

@@ -231,4 +231,13 @@ defmodule AspectTest do
     unload(:macros)
     assert {2, 1} == :scratchpad.test()
   end
+
+  test "static call" do
+    load(compile_string("""
+    : f ( -- x ) [ 1 2 + ] call ;
+    : g ( -- x ) [ [ 1 ] ] call call ;
+    """))
+    assert 3 == :scratchpad.f()
+    assert 1 == :scratchpad.g()
+  end
 end
