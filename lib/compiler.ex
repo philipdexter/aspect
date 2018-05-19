@@ -19,22 +19,26 @@ defmodule Aspect.Compiler do
     "if" => {&Aspect.Compiler.Builtins.if/3, {3, 1}},
     "call(" => {&Aspect.Compiler.Builtins.call/3, {0, 0}},
     "infer" => {&Aspect.Compiler.Builtins.infer/3, {1, 1}},
-    "|" => {&Aspect.Compiler.Builtins.cons/3, {2,1}},
-    "empty" => {&Aspect.Compiler.Builtins.empty/3, {0,1}},
+    "|" => {&Aspect.Compiler.Builtins.cons/3, {2, 1}},
+    "empty" => {&Aspect.Compiler.Builtins.empty/3, {0, 1}}
   }
 
   defmodule Ctx do
-    defstruct fresh: 0, words: %{}, syntax: MapSet.new(), macros: MapSet.new(), module_name: "scratchpad",
-      parsing_words: %{
-        ":" => &Aspect.Compiler.Builtins.colon/3,
-        "M:" => &Aspect.Compiler.Builtins.set_module/3,
-        "SYNTAX:" => &Aspect.Compiler.Builtins.syntax/3,
-        "MACRO:" => &Aspect.Compiler.Builtins.macro/3,
-        "parse-token" => &Aspect.Compiler.Builtins.parse_token/3,
-        "DEP:" => &Aspect.Compiler.Builtins.dep/3,
-        "[" => &Aspect.Compiler.Builtins.quot/3,
-      },
-      macro_words: %{}
+    defstruct fresh: 0,
+              words: %{},
+              syntax: MapSet.new(),
+              macros: MapSet.new(),
+              module_name: "scratchpad",
+              parsing_words: %{
+                ":" => &Aspect.Compiler.Builtins.colon/3,
+                "M:" => &Aspect.Compiler.Builtins.set_module/3,
+                "SYNTAX:" => &Aspect.Compiler.Builtins.syntax/3,
+                "MACRO:" => &Aspect.Compiler.Builtins.macro/3,
+                "parse-token" => &Aspect.Compiler.Builtins.parse_token/3,
+                "DEP:" => &Aspect.Compiler.Builtins.dep/3,
+                "[" => &Aspect.Compiler.Builtins.quot/3
+              },
+              macro_words: %{}
   end
 
   defmodule AST do
@@ -121,15 +125,23 @@ defmodule Aspect.Compiler do
   end
 
   def add_parsing_words(syntax_atom_list, mod_atom, %Ctx{parsing_words: parsing_words} = ctx) do
-    %Ctx{ctx | parsing_words: List.foldl(syntax_atom_list, parsing_words, fn s, map ->
+    %Ctx{
+      ctx
+      | parsing_words:
+          List.foldl(syntax_atom_list, parsing_words, fn s, map ->
             Map.put(map, Atom.to_string(s), fn a, b, c -> apply(mod_atom, s, [a, b, c]) end)
-          end)}
+          end)
+    }
   end
 
   def add_macros(macros_atom_list, mod_atom, %Ctx{macro_words: macro_words} = ctx) do
-    %Ctx{ctx | macro_words: List.foldl(macros_atom_list, macro_words, fn {s, args}, map ->
+    %Ctx{
+      ctx
+      | macro_words:
+          List.foldl(macros_atom_list, macro_words, fn {s, args}, map ->
             Map.put(map, Atom.to_string(s), {mod_atom, s, args})
-          end)}
+          end)
+    }
   end
 
   def define_syntax(name, %Ctx{syntax: syntax} = ctx) do
@@ -153,9 +165,10 @@ defmodule Aspect.Compiler do
       {:attribute, 1, :file, {'hi.as', 1}},
       {:attribute, 1, :module, String.to_atom(ctx.module_name)},
       {:attribute, 2, :compile, :export_all},
-      {:attribute, 3, :words, Enum.map(ctx.words, fn ({word, _}) -> String.to_atom(word) end)},
-      {:attribute, 3, :syntax, Enum.map(ctx.syntax, fn (word) -> String.to_atom(word) end)},
-      {:attribute, 3, :macros, Enum.map(ctx.macros, fn ({word, args}) -> {String.to_atom(word), args} end)},
+      {:attribute, 3, :words, Enum.map(ctx.words, fn {word, _} -> String.to_atom(word) end)},
+      {:attribute, 3, :syntax, Enum.map(ctx.syntax, fn word -> String.to_atom(word) end)},
+      {:attribute, 3, :macros,
+       Enum.map(ctx.macros, fn {word, args} -> {String.to_atom(word), args} end)}
     ] ++ code ++ [{:eof, 7}]
   end
 
@@ -206,10 +219,14 @@ defmodule Aspect.Compiler do
   def word_type(word) do
     # if it's a list, it must (maybe? hopefully) be a quotation
     case is_list(word) do
-      true -> :quot
+      true ->
+        :quot
+
       false ->
         case builtin(word) do
-          {:ok, _} -> :builtin
+          {:ok, _} ->
+            :builtin
+
           _ ->
             num? =
               try do
@@ -219,29 +236,42 @@ defmodule Aspect.Compiler do
               end
 
             case num? do
-              :error -> case String.starts_with?(word, ":") do
-                          true -> :atom
-                          false -> case String.contains?(word, "/") do
-                                     true -> :call_setup
-                                     false -> case String.starts_with?(word, "'") do
-                                                true -> :charlist
-                                                false -> :func_call
-                                              end
-                                   end
+              :error ->
+                case String.starts_with?(word, ":") do
+                  true ->
+                    :atom
+
+                  false ->
+                    case String.contains?(word, "/") do
+                      true ->
+                        :call_setup
+
+                      false ->
+                        case String.starts_with?(word, "'") do
+                          true -> :charlist
+                          false -> :func_call
                         end
-              _ -> :number
+                    end
+                end
+
+              _ ->
+                :number
             end
         end
     end
   end
 
-  def quot_to_eaf([]), do: {:nil, 1}
+  def quot_to_eaf([]), do: {nil, 1}
   def quot_to_eaf([x | xs]), do: {:cons, 1, quot_to_eaf_single(x), quot_to_eaf(xs)}
-  def quot_to_eaf_single(x), do: {:bin, 1, [{:bin_elelment, 1, {:string, 1, String.to_charlist(x)}, :default, :default}]}
 
-  def eaf_to_quot({:nil, _}), do: []
+  def quot_to_eaf_single(x),
+    do: {:bin, 1, [{:bin_elelment, 1, {:string, 1, String.to_charlist(x)}, :default, :default}]}
+
+  def eaf_to_quot({nil, _}), do: []
   def eaf_to_quot({:cons, _, x, xs}), do: [eaf_to_quot_single(x) | eaf_to_quot(xs)]
-  def eaf_to_quot_single({:bin, _, [{:bin_elelment, _, {:string, _, x}, :default, :default}]}), do: :erlang.list_to_binary(x)
+
+  def eaf_to_quot_single({:bin, _, [{:bin_elelment, _, {:string, _, x}, :default, :default}]}),
+    do: :erlang.list_to_binary(x)
 
   def compile_word(word, ast, stack, ctx) do
     case word_type(word) do
@@ -254,12 +284,17 @@ defmodule Aspect.Compiler do
         # that way we can react differently and don't have to match everything
         # to vars
         {[], ast, [word | stack], ctx}
+
       :builtin ->
         {:ok, {w, _}} = builtin(word)
         w.(ast, stack, ctx)
+
       :atom ->
         {[x], ctxx} = fresh(1, ctx)
-        {[match(var(x), {:atom, 1, String.to_atom(String.slice(word, 1..-1))})], ast, [x | stack], ctxx}
+
+        {[match(var(x), {:atom, 1, String.to_atom(String.slice(word, 1..-1))})], ast, [x | stack],
+         ctxx}
+
       :call_setup ->
         # call setup
         [arg_count, return_count] =
@@ -277,29 +312,30 @@ defmodule Aspect.Compiler do
         case return_count do
           0 ->
             {[
-              mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
-            ], ast_next, stack_next, ctx}
+               mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
+             ], ast_next, stack_next, ctx}
 
           1 ->
             {[x], ctxx} = fresh(1, ctx)
 
             {[
-              match(
-                var(x),
-                mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
-              )
-            ], ast_next, [x | stack_next], ctxx}
+               match(
+                 var(x),
+                 mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
+               )
+             ], ast_next, [x | stack_next], ctxx}
 
           _ ->
             {xs, ctxx} = fresh(return_count, ctx)
 
             {[
-              match(
-                tuple(Enum.map(xs, &var/1)),
-                mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
-              )
-            ], ast_next, xs ++ stack_next, ctxx}
+               match(
+                 tuple(Enum.map(xs, &var/1)),
+                 mfa_call(String.to_atom(m), String.to_atom(f), Enum.map(args, &var/1))
+               )
+             ], ast_next, xs ++ stack_next, ctxx}
         end
+
       :func_call ->
         case Map.get(ctx.words, word) do
           nil ->
@@ -327,9 +363,11 @@ defmodule Aspect.Compiler do
 
             {[code], ast, stack_, ctx_}
         end
+
       :number ->
         {[x], ctxx} = fresh(1, ctx)
         {[match(var(x), {:integer, 1, String.to_integer(word)})], ast, [x | stack], ctxx}
+
       :charlist ->
         # TODO
         # fix string handling, should do something in the parser which
@@ -350,9 +388,11 @@ defmodule Aspect.Compiler do
   def gen_code(ast, stack, ctx) do
     gen_code_aux([], expand_macros(ast, ctx), stack, ctx)
   end
+
   def gen_code_aux(code, [], stack, ctx) do
     {code, stack, ctx}
   end
+
   def gen_code_aux(code, ast, stack, ctx) do
     {code_, ast_, stack_, ctx_} = compile_forms(ast, stack, ctx)
     gen_code_aux(code ++ code_, ast_, stack_, ctx_)
@@ -363,10 +403,12 @@ defmodule Aspect.Compiler do
   def expand_macros(ast, ctx), do: expand_macros_aux([], ast, ctx)
 
   def expand_macros_aux(l, [], _), do: Enum.reverse(l)
+
   def expand_macros_aux(l, [x | ast], %Ctx{macro_words: macro_words} = ctx) do
     case Map.get(macro_words, x) do
       nil ->
         expand_macros_aux([x | l], ast, ctx)
+
       spec ->
         {new_l, added} = expand_macro(l, spec)
         expand_macros_aux(new_l, added ++ ast, ctx)

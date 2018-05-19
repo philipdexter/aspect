@@ -48,7 +48,9 @@ defmodule Aspect.Compiler.Builtins do
   def infer(ast, [quot | stack], ctx) do
     answer = infer_stack_effect(quot, ctx)
     {[x], ctx} = fresh(1, ctx)
-    {[match(var(x), {:tuple, 1, Enum.map(Tuple.to_list(answer), fn x -> {:integer, 1, x} end)})], ast, [x | stack], ctx}
+
+    {[match(var(x), {:tuple, 1, Enum.map(Tuple.to_list(answer), fn x -> {:integer, 1, x} end)})],
+     ast, [x | stack], ctx}
   end
 
   def calc_stack_effect({a, b}, {0, 0}), do: {a, b}
@@ -65,18 +67,28 @@ defmodule Aspect.Compiler.Builtins do
 
   def infer_stack_effect_single(word, ctx) do
     case Aspect.Compiler.word_type(word) do
-      :quot -> {0, 1}
+      :quot ->
+        {0, 1}
+
       :builtin ->
         {:ok, {_, effect}} = Aspect.Compiler.builtin(word)
         effect
-      :atom -> {0, 1}
-      :number -> {0, 1}
-      :call_setup -> :ok
+
+      :atom ->
+        {0, 1}
+
+      :number ->
+        {0, 1}
+
+      :call_setup ->
+        :ok
+
       :func_call ->
         case Map.get(ctx.words, word) do
           nil ->
             throw({:undefined_function, word})
-          effect->
+
+          effect ->
             effect
         end
     end
@@ -90,7 +102,7 @@ defmodule Aspect.Compiler.Builtins do
 
   def empty(ast, stack, ctx) do
     {[x], ctx} = fresh(1, ctx)
-    code = [match(var(x), {:nil, 1})]
+    code = [match(var(x), {nil, 1})]
     {code, ast, [x | stack], ctx}
   end
 
@@ -112,31 +124,47 @@ defmodule Aspect.Compiler.Builtins do
     1 = length(tc_ret_args)
     1 = length(fc_ret_args)
 
-    tc_full_code =
-      [{:call, 1,
-        {:fun, 1, {:clauses, [{:clause, 1, [], [],
-                               case tc_ret_args do
-                                 [] -> tc_code
-                                 [v] -> tc_code ++ [var(v)]
-                                 s -> tc_code ++ [tuple(Enum.map(s, &var/1))]
-                               end}]}}, []}]
+    tc_full_code = [
+      {:call, 1,
+       {:fun, 1,
+        {:clauses,
+         [
+           {:clause, 1, [], [],
+            case tc_ret_args do
+              [] -> tc_code
+              [v] -> tc_code ++ [var(v)]
+              s -> tc_code ++ [tuple(Enum.map(s, &var/1))]
+            end}
+         ]}}, []}
+    ]
 
-    fc_full_code =
-      [{:call, 1,
-        {:fun, 1, {:clauses, [{:clause, 1, [], [],
-                               case fc_ret_args do
-                                 [] -> fc_code
-                                 [v] -> fc_code ++ [var(v)]
-                                 s -> fc_code ++ [tuple(Enum.map(s, &var/1))]
-                               end}]}}, []}]
+    fc_full_code = [
+      {:call, 1,
+       {:fun, 1,
+        {:clauses,
+         [
+           {:clause, 1, [], [],
+            case fc_ret_args do
+              [] -> fc_code
+              [v] -> fc_code ++ [var(v)]
+              s -> fc_code ++ [tuple(Enum.map(s, &var/1))]
+            end}
+         ]}}, []}
+    ]
 
     {[ret_var], ctx} = fresh(1, ctx)
 
     # TODO just match on false, and everything else is true?
     code =
-      match(var(ret_var),
-        {:case, 1, var(b), [{:clause, 1, [{:atom, 1, :true}], [], tc_full_code},
-                            {:clause, 1, [{:atom, 1, :false}], [], fc_full_code}]})
+      match(
+        var(ret_var),
+        {:case, 1, var(b),
+         [
+           {:clause, 1, [{:atom, 1, true}], [], tc_full_code},
+           {:clause, 1, [{:atom, 1, false}], [], fc_full_code}
+         ]}
+      )
+
     {[code], ast, [ret_var | stack], ctx}
   end
 
@@ -210,8 +238,9 @@ defmodule Aspect.Compiler.Builtins do
         false -> ctx
       end
 
-    function = {:function, 5, String.to_atom(name), arg_count,
-                [{:clause, 5, Enum.map(arg_vars, &var/1), [], full_code}]}
+    function =
+      {:function, 5, String.to_atom(name), arg_count,
+       [{:clause, 5, Enum.map(arg_vars, &var/1), [], full_code}]}
 
     {[function], ast, stack, ctx}
   end
@@ -274,9 +303,11 @@ defmodule Aspect.Compiler.Builtins do
     # define_declared works
     # it should just add something to ctx which then
     # generates the actual code later
-    syntax_effect = {3, 4} # ( ctx stack ast -- ctx stack ast code )
+    # ( ctx stack ast -- ctx stack ast code )
+    syntax_effect = {3, 4}
 
-    {code_, ast, stack, ctx} = define_declared(ast, [name, syntax_effect, Enum.reverse(body_r) | stack], ctx, false)
+    {code_, ast, stack, ctx} =
+      define_declared(ast, [name, syntax_effect, Enum.reverse(body_r) | stack], ctx, false)
 
     ctx = define_syntax(name, ctx)
 
@@ -290,7 +321,8 @@ defmodule Aspect.Compiler.Builtins do
 
     {args, 1} = effect
 
-    {code_, ast, stack, ctx} = define_declared(ast, [name, effect, Enum.reverse(body_r) | stack], ctx, false)
+    {code_, ast, stack, ctx} =
+      define_declared(ast, [name, effect, Enum.reverse(body_r) | stack], ctx, false)
 
     ctx = define_macro(name, args, ctx)
 
@@ -303,8 +335,10 @@ defmodule Aspect.Compiler.Builtins do
   def parse_body(ast, stack, ctx) do
     parse_body_aux([], ast, stack, ctx)
   end
+
   def parse_body_aux(code, ast, stack, ctx) do
     {code_, ast, stack, ctx} = Aspect.Lexer.parse_word(ast, stack, ctx)
+
     case stack do
       [] -> throw(:unexpected_eof)
       [";" | stack] -> {code ++ code_, ast, stack, ctx}
@@ -315,8 +349,10 @@ defmodule Aspect.Compiler.Builtins do
   def parse_quotation(ast, stack, ctx) do
     parse_quotation_aux([], ast, stack, ctx)
   end
+
   def parse_quotation_aux(code, ast, stack, ctx) do
     {code_, ast, stack, ctx} = Aspect.Lexer.parse_word(ast, stack, ctx)
+
     case stack do
       ["]" | stack] -> {code ++ code_, ast, stack, ctx}
       _ -> parse_quotation_aux(code ++ code_, ast, stack, ctx)
