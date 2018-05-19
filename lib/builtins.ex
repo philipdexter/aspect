@@ -46,7 +46,7 @@ defmodule Aspect.Compiler.Builtins do
   end
 
   def infer(ast, [quot | stack], ctx) do
-    answer = infer_stack_effect(quot, ctx)
+    answer = infer_stack_effect(eaf_to_quot(quot), ctx)
     {[x], ctx} = fresh(1, ctx)
 
     {[match(var(x), {:tuple, 1, Enum.map(Tuple.to_list(answer), fn x -> {:integer, 1, x} end)})],
@@ -118,8 +118,8 @@ defmodule Aspect.Compiler.Builtins do
 
     # TODO if probably shouldn't have to worry about
     # generating code
-    {tc_code, tc_ret_args, ctx} = gen_code(tc, [], ctx)
-    {fc_code, fc_ret_args, ctx} = gen_code(fc, [], ctx)
+    {tc_code, tc_ret_args, ctx} = gen_code(eaf_to_quot(tc), [], ctx)
+    {fc_code, fc_ret_args, ctx} = gen_code(eaf_to_quot(fc), [], ctx)
 
     1 = length(tc_ret_args)
     1 = length(fc_ret_args)
@@ -177,7 +177,7 @@ defmodule Aspect.Compiler.Builtins do
 
     # TODO call probably shouldn't have to worry
     # about generating code
-    {code, ret_args, ctx} = gen_code(quot, arg_vars, ctx)
+    {code, ret_args, ctx} = gen_code(eaf_to_quot(quot), arg_vars, ctx)
 
     full_code =
       case ret_args do

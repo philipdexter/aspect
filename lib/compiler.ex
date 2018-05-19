@@ -23,6 +23,8 @@ defmodule Aspect.Compiler do
     "empty" => {&Aspect.Compiler.Builtins.empty/3, {0, 1}}
   }
 
+  # TODO call macro!!
+
   defmodule Ctx do
     defstruct fresh: 0,
               words: %{},
@@ -264,12 +266,16 @@ defmodule Aspect.Compiler do
   def quot_to_eaf([]), do: {nil, 1}
   def quot_to_eaf([x | xs]), do: {:cons, 1, quot_to_eaf_single(x), quot_to_eaf(xs)}
 
+  def quot_to_eaf_single(x) when is_list(x),
+    do: quot_to_eaf(x)
   def quot_to_eaf_single(x),
     do: {:bin, 1, [{:bin_elelment, 1, {:string, 1, String.to_charlist(x)}, :default, :default}]}
 
   def eaf_to_quot({nil, _}), do: []
   def eaf_to_quot({:cons, _, x, xs}), do: [eaf_to_quot_single(x) | eaf_to_quot(xs)]
 
+  def eaf_to_quot_single({:cons, _, _, _} = x),
+    do: eaf_to_quot(x)
   def eaf_to_quot_single({:bin, _, [{:bin_elelment, _, {:string, _, x}, :default, :default}]}),
     do: :erlang.list_to_binary(x)
 
@@ -289,7 +295,7 @@ defmodule Aspect.Compiler do
         #       {:quot,   {:cons, blah}}
         # that way we can react differently and don't have to match everything
         # to vars
-        {[], ast, [word | stack], ctx}
+        {[], ast, [quot_to_eaf(word) | stack], ctx}
 
       :builtin ->
         {:ok, {w, _}} = builtin(word)
