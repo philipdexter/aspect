@@ -276,6 +276,9 @@ defmodule Aspect.Compiler do
   ## TODO!!! vars should be pushed on the stack as vars
   ## so we don't need varize function in builtins
 
+  ## TODO when returning quots to elixir
+  ## will have to call compile first i guess
+
   def compile_word(word, ast, stack, ctx) do
     case word_type(word) do
       :quot ->
@@ -293,10 +296,8 @@ defmodule Aspect.Compiler do
         w.(ast, stack, ctx)
 
       :atom ->
-        {[x], ctxx} = fresh(1, ctx)
-
-        {[match(var(x), {:atom, 1, String.to_atom(String.slice(word, 1..-1))})], ast, [x | stack],
-         ctxx}
+        x = {:atom, 1, String.to_atom(String.slice(word, 1..-1))}
+        {[], ast, [x | stack], ctx}
 
       :call_setup ->
         # call setup
@@ -378,8 +379,8 @@ defmodule Aspect.Compiler do
         # that as a word
         # TODO
         # charlist vs string? if we return a charlist here then the parser pukes
-        {[x], ctxx} = fresh(1, ctx)
-        {[match(var(x), {:string, 1, String.trim(word, "'")})], ast, [x | stack], ctxx}
+        x = {:string, 1, String.trim(word, "'")}
+        {[], ast, [x | stack], ctx}
     end
   end
 
